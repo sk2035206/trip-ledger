@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="f0a116be-3a82-43d7-88bd-294f626c8771" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.openai/hosting.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/api/health/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/api/state/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/chatgpt-auth.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/globals.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/layout.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/build/sites-vite-plugin.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/deploy.example.env" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/mysql.example.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/deploy.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/requirements.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/drizzle.config.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/eslint.config.mjs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/api-client.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/sample-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/trip-types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/trip-utils.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/.gitkeep" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/next-env.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/next.config.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/pnpm-workspace.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/postcss.config.mjs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/favicon.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/file.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/globe.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/window.svg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/api-start.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/api-stop.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/deploy-scp.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/dev-start.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/dev-stop.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/prod-start.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/prod-stop.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/release-build.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/web-start.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/web-stop.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/http/json.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/mysql/config.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/mysql/pool.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/mysql/schema.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/mysql/state-repository.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/mysql/trip-ledger-repository.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/services/trip-ledger-service.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/rendered-html.test.mjs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/trip-utils.test.mjs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tsconfig.tsbuildinfo" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/vite.config.ts" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
+  <component name="MavenImportPreferences">
+    <option name="generalSettings">
+      <MavenGeneralSettings>
+        <option name="userSettingsFile" value="$PROJECT_DIR$/../../java/apache-maven-3.5.3/conf/settings.xml" />
+      </MavenGeneralSettings>
+    </option>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="3HnpM9r4IjAfjPbTeOkYCf2jbwe" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "git-widget-placeholder": "main",
+    "javascript.preferred.runtime.type.id": "node",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "/Users/make/sk/project/trip-ledger",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.standard": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.standard": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "ts.external.directory.path": "/Users/make/sk/project/trip-ledger/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-WS-253.31033.133" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f0a116be-3a82-43d7-88bd-294f626c8771" name="Changes" comment="" />
+      <created>1786513637922</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1786513637922</updated>
+      <workItem from="1786513640516" duration="2433000" />
+      <workItem from="1786524214347" duration="4463000" />
+      <workItem from="1786591530882" duration="1493000" />
+      <workItem from="1786600203008" duration="442000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
