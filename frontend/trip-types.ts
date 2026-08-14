@@ -11,6 +11,7 @@ export type SharedExpense = {
   title: string;
   category: string;
   amount: number;
+  payerId?: string;
   participantIds: string[];
   note?: string;
 };
@@ -63,6 +64,7 @@ export type MemberTotal = {
   travel: number;
   personal: number;
   adjustment: number;
+  paid: number;
   total: number;
 };
 

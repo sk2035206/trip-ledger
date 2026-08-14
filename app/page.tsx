@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { loadRemoteState, saveRemoteState } from "@/frontend/api-client";
 import { defaultCategories, defaultState } from "@/frontend/sample-data";
 import type {
-  Adjustment,
   AppState,
   LedgerLine,
   LedgerTab,
@@ -40,6 +39,8 @@ export default function Home() {
   const [appState, setAppState] = useState<AppState>(defaultState);
   const [activeView, setActiveView] = useState<TopView>("workbench");
   const [ledgerTab, setLedgerTab] = useState<LedgerTab>("overview");
+  const [entryForm, setEntryForm] = useState<"shared" | "travel" | "personal" | null>(null);
+  const [createModal, setCreateModal] = useState<"trip" | "person" | "category" | null>(null);
   const [currentTripId, setCurrentTripId] = useState(defaultState.trips[0].id);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultState.trips[0].members[0].id);
@@ -52,6 +53,7 @@ export default function Home() {
     title: "",
     amount: "",
     category: defaultCategories[1],
+    payerId: "",
     participantIds: defaultState.trips[0].members.map((member) => member.id),
     note: "",
   });
@@ -66,12 +68,6 @@ export default function Home() {
     title: "",
     amount: "",
     date: "",
-    note: "",
-  });
-  const [adjustForm, setAdjustForm] = useState({
-    memberId: defaultState.trips[0].members[0].id,
-    title: "自付扣减",
-    amount: "",
     note: "",
   });
   const hasLoadedRemote = useRef(false);
@@ -152,6 +148,7 @@ export default function Home() {
       setSharedForm((form) => ({
         ...form,
         category: appState.categories.includes(form.category) ? form.category : appState.categories[0] ?? "其他",
+        payerId: allMemberIds.includes(form.payerId) ? form.payerId : "",
         participantIds: form.participantIds.filter((id) => allMemberIds.includes(id)),
       }));
       setTravelForm((form) => ({
@@ -159,10 +156,6 @@ export default function Home() {
         participantIds: form.participantIds.filter((id) => allMemberIds.includes(id)),
       }));
       setPersonalForm((form) => ({
-        ...form,
-        memberId: allMemberIds.includes(form.memberId) ? form.memberId : firstMemberId,
-      }));
-      setAdjustForm((form) => ({
         ...form,
         memberId: allMemberIds.includes(form.memberId) ? form.memberId : firstMemberId,
       }));
@@ -213,6 +206,7 @@ export default function Home() {
     setAppState((state) => ({ ...state, trips: [trip, ...state.trips] }));
     setCurrentTripId(trip.id);
     setNewTripTitle("");
+    setCreateModal(null);
     setActiveView("ledger");
     setLedgerTab("members");
   }
@@ -225,6 +219,7 @@ export default function Home() {
       return { ...state, people: [...state.people, { id: uid("person"), name }] };
     });
     setPersonName("");
+    setCreateModal(null);
   }
 
   function deleteRosterPerson(personId: string) {
@@ -257,6 +252,7 @@ export default function Home() {
       return { ...state, categories: [...state.categories, name] };
     });
     setCategoryName("");
+    setCreateModal(null);
   }
 
   function deleteCategory(name: string) {
@@ -281,15 +277,17 @@ export default function Home() {
           id: uid("shared"),
           title,
           amount,
-          category: sharedForm.category,
-          participantIds: sharedForm.participantIds,
+	          category: sharedForm.category,
+	          payerId: sharedForm.payerId || undefined,
+	          participantIds: sharedForm.participantIds,
           note: sharedForm.note.trim(),
         },
         ...trip.sharedExpenses,
       ],
-    }));
-    setSharedForm((form) => ({ ...form, title: "", amount: "", note: "" }));
-  }
+	    }));
+	    setSharedForm((form) => ({ ...form, title: "", amount: "", note: "" }));
+	    setEntryForm(null);
+	  }
 
   function addTravelCost() {
     const amount = Number(travelForm.amount);
@@ -307,9 +305,10 @@ export default function Home() {
         },
         ...trip.travelCosts,
       ],
-    }));
-    setTravelForm((form) => ({ ...form, title: "", amount: "", note: "" }));
-  }
+	    }));
+	    setTravelForm((form) => ({ ...form, title: "", amount: "", note: "" }));
+	    setEntryForm(null);
+	  }
 
   function addPersonalExpense() {
     const amount = Number(personalForm.amount);
@@ -328,30 +327,10 @@ export default function Home() {
         },
         ...trip.personalExpenses,
       ],
-    }));
-    setPersonalForm((form) => ({ ...form, title: "", amount: "", date: "", note: "" }));
-  }
-
-  function addAdjustment() {
-    const inputAmount = Number(adjustForm.amount);
-    const amount = -Math.abs(inputAmount);
-    const title = adjustForm.title.trim();
-    if (!title || !inputAmount || !adjustForm.memberId) return;
-    updateTrip((trip) => ({
-      ...trip,
-      adjustments: [
-        {
-          id: uid("adjust"),
-          memberId: adjustForm.memberId,
-          title,
-          amount,
-          note: adjustForm.note.trim(),
-        },
-        ...trip.adjustments,
-      ],
-    }));
-    setAdjustForm((form) => ({ ...form, title: "自付扣减", amount: "", note: "" }));
-  }
+	    }));
+	    setPersonalForm((form) => ({ ...form, title: "", amount: "", date: "", note: "" }));
+	    setEntryForm(null);
+	  }
 
   function deleteItem(collection: keyof Trip, itemId: string) {
     updateTrip((trip) => {
@@ -424,9 +403,9 @@ export default function Home() {
         (item) =>
           `${item.member.name}：总计 ${formatMoney(item.total)}，公共 ${formatMoney(
             item.shared,
-          )}，出行 ${formatMoney(item.travel)}，个人 ${formatMoney(
-            item.personal,
-          )}，自付 ${formatMoney(item.adjustment)}`,
+	          )}，出行 ${formatMoney(item.travel)}，个人 ${formatMoney(
+	            item.personal,
+	          )}，已付抵扣 ${formatMoney(item.adjustment - item.paid)}`,
       ),
     ];
     return lines.join("\n");
@@ -550,13 +529,9 @@ export default function Home() {
       {activeView === "trips" && (
         <section className="content-grid">
           <Panel title="出行管理" kicker="账单列表">
-            <div className="inline-form">
-              <input
-                value={newTripTitle}
-                onChange={(event) => setNewTripTitle(event.target.value)}
-                placeholder="新出行账单名称"
-              />
-              <button type="button" onClick={createTrip}>
+            <div className="list-toolbar">
+              <span>管理每一次旅行账单</span>
+              <button type="button" onClick={() => setCreateModal("trip")}>
                 新建账单
               </button>
             </div>
@@ -572,13 +547,9 @@ export default function Home() {
       {activeView === "people" && (
         <section className="content-grid">
           <Panel title="人员管理" kicker="全局人员库">
-            <div className="inline-form">
-              <input
-                value={personName}
-                onChange={(event) => setPersonName(event.target.value)}
-                placeholder="人员姓名"
-              />
-              <button type="button" onClick={addGlobalPerson}>
+            <div className="list-toolbar">
+              <span>人员只在这里维护，账单内从人员库选择</span>
+              <button type="button" onClick={() => setCreateModal("person")}>
                 新增人员
               </button>
             </div>
@@ -598,13 +569,9 @@ export default function Home() {
       {activeView === "categories" && (
         <section className="content-grid">
           <Panel title="类别管理" kicker="公共费用分类">
-            <div className="inline-form">
-              <input
-                value={categoryName}
-                onChange={(event) => setCategoryName(event.target.value)}
-                placeholder="类别名称，如住宿/餐饮"
-              />
-              <button type="button" onClick={addCategory}>
+            <div className="list-toolbar">
+              <span>用于公共费用分项统计</span>
+              <button type="button" onClick={() => setCreateModal("category")}>
                 新增类别
               </button>
             </div>
@@ -651,7 +618,7 @@ export default function Home() {
 	                  <Stat label="公共参考人均" value={formatMoney(totals.sharedAverage)} onClick={() => setLedgerTab("shared")} />
 	                  <Stat label="出行费用" value={formatMoney(totals.travelTotal)} onClick={() => setLedgerTab("travel")} />
 	                  <Stat label="个人费用" value={formatMoney(totals.personalTotal)} onClick={() => setLedgerTab("personal")} />
-	                  <Stat label="自付扣减" value={formatMoney(totals.adjustmentTotal)} onClick={() => setLedgerTab("personal")} />
+	                  <Stat label="已付款" value={formatMoney(totals.paidTotal + Math.abs(totals.adjustmentTotal))} onClick={() => setLedgerTab("shared")} />
 	                  <Stat label="成员数" value={`${currentTrip.members.length}`} onClick={() => setLedgerTab("members")} />
 	                </div>
 	              </Panel>
@@ -679,214 +646,62 @@ export default function Home() {
             </section>
           )}
 
-          {ledgerTab === "shared" && (
-            <section className="content-grid">
-              <Panel title="公共费用录入" kicker="多人分摊">
-                <div className="form-grid">
-                  <input
-                    value={sharedForm.title}
-                    onChange={(event) => setSharedForm((form) => ({ ...form, title: event.target.value }))}
-                    placeholder="事项，如酒店/海鲜馆"
-                  />
-                  <input
-                    inputMode="decimal"
-                    value={sharedForm.amount}
-                    onChange={(event) => setSharedForm((form) => ({ ...form, amount: event.target.value }))}
-                    placeholder="金额"
-                  />
-                  <select
-                    value={sharedForm.category}
-                    onChange={(event) => setSharedForm((form) => ({ ...form, category: event.target.value }))}
-                  >
-                    {appState.categories.map((category) => (
-                      <option key={category}>{category}</option>
-                    ))}
-                  </select>
-                  <input
-                    value={sharedForm.note}
-                    onChange={(event) => setSharedForm((form) => ({ ...form, note: event.target.value }))}
-                    placeholder="备注，可选"
-                  />
-                </div>
-                <ParticipantPicker
-                  members={currentTrip.members}
-                  selectedIds={sharedForm.participantIds}
-                  onToggle={(id) =>
-                    setSharedForm((form) => ({
-                      ...form,
-                      participantIds: toggleIds(form.participantIds, id),
-                    }))
-                  }
-                  onSelectAll={() => setAllParticipants("shared")}
-                />
-                <div className="form-footer">
-                  <span>
-                    该项人均：
-                    {formatMoney(splitAmount(Number(sharedForm.amount), sharedForm.participantIds.length))}
-                  </span>
-                  <button type="button" onClick={addSharedExpense}>
-                    保存公共费用
-                  </button>
-                </div>
-              </Panel>
+	          {ledgerTab === "shared" && (
+	            <section className="content-grid">
+	              <Panel title="公共费用清单" kicker={`${currentTrip.sharedExpenses.length} 项`}>
+	                <div className="list-toolbar">
+	                  <span>成员付款会自动抵扣最终应付</span>
+	                  <button type="button" onClick={() => setEntryForm("shared")}>
+	                    新增公费
+	                  </button>
+	                </div>
+	                <ExpenseList
+	                  trip={currentTrip}
+	                  items={currentTrip.sharedExpenses}
+	                  onDelete={(id) => deleteItem("sharedExpenses", id)}
+	                />
+	              </Panel>
 
-              <Panel title="公共费用明细" kicker={`${currentTrip.sharedExpenses.length} 项`}>
-                <ExpenseList
-                  trip={currentTrip}
-                  items={currentTrip.sharedExpenses}
-                  onDelete={(id) => deleteItem("sharedExpenses", id)}
-                />
-              </Panel>
-            </section>
-          )}
+	            </section>
+	          )}
 
-          {ledgerTab === "travel" && (
-            <section className="content-grid">
-              <Panel title="出行费用录入" kicker="车票/机票/城际交通">
-                <div className="form-grid">
-                  <input
-                    value={travelForm.title}
-                    onChange={(event) => setTravelForm((form) => ({ ...form, title: event.target.value }))}
-                    placeholder="行程，如青岛-长沙往返"
-                  />
-                  <input
-                    inputMode="decimal"
-                    value={travelForm.amount}
-                    onChange={(event) => setTravelForm((form) => ({ ...form, amount: event.target.value }))}
-                    placeholder="金额"
-                  />
-                  <input
-                    className="wide-field"
-                    value={travelForm.note}
-                    onChange={(event) => setTravelForm((form) => ({ ...form, note: event.target.value }))}
-                    placeholder="公式或备注，如789+789=1578"
-                  />
-                </div>
-                <ParticipantPicker
-                  members={currentTrip.members}
-                  selectedIds={travelForm.participantIds}
-                  onToggle={(id) =>
-                    setTravelForm((form) => ({
-                      ...form,
-                      participantIds: toggleIds(form.participantIds, id),
-                    }))
-                  }
-                  onSelectAll={() => setAllParticipants("travel")}
-                />
-                <div className="form-footer">
-                  <span>
-                    该项人均：
-                    {formatMoney(splitAmount(Number(travelForm.amount), travelForm.participantIds.length))}
-                  </span>
-                  <button type="button" onClick={addTravelCost}>
-                    保存出行费用
-                  </button>
-                </div>
-              </Panel>
+	          {ledgerTab === "travel" && (
+	            <section className="content-grid">
+	              <Panel title="出行费用清单" kicker={`${currentTrip.travelCosts.length} 项`}>
+	                <div className="list-toolbar">
+	                  <span>车票、机票、城际交通等单独分摊</span>
+	                  <button type="button" onClick={() => setEntryForm("travel")}>
+	                    新增出行
+	                  </button>
+	                </div>
+	                <TravelList
+	                  trip={currentTrip}
+	                  items={currentTrip.travelCosts}
+	                  onDelete={(id) => deleteItem("travelCosts", id)}
+	                />
+	              </Panel>
 
-              <Panel title="出行费用清单" kicker={`${currentTrip.travelCosts.length} 项`}>
-                <TravelList
-                  trip={currentTrip}
-                  items={currentTrip.travelCosts}
-                  onDelete={(id) => deleteItem("travelCosts", id)}
-                />
-              </Panel>
-            </section>
-          )}
+	            </section>
+	          )}
 
-          {ledgerTab === "personal" && (
-            <section className="content-grid">
-              <Panel title="个人费用清单" kicker="不计入公共总费用">
-                <div className="form-grid">
-                  <select
-                    value={personalForm.memberId}
-                    onChange={(event) => setPersonalForm((form) => ({ ...form, memberId: event.target.value }))}
-                  >
-                    {currentTrip.members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    value={personalForm.title}
-                    onChange={(event) => setPersonalForm((form) => ({ ...form, title: event.target.value }))}
-                    placeholder="个人事项"
-                  />
-                  <input
-                    inputMode="decimal"
-                    value={personalForm.amount}
-                    onChange={(event) => setPersonalForm((form) => ({ ...form, amount: event.target.value }))}
-                    placeholder="金额"
-                  />
-                  <input
-                    value={personalForm.date}
-                    onChange={(event) => setPersonalForm((form) => ({ ...form, date: event.target.value }))}
-                    placeholder="日期，可选"
-                  />
-                  <input
-                    className="wide-field"
-                    value={personalForm.note}
-                    onChange={(event) => setPersonalForm((form) => ({ ...form, note: event.target.value }))}
-                    placeholder="备注/公式，可选"
-                  />
-                </div>
-                <div className="form-footer">
-                  <span>会计入该成员个人合计，不进入公共总费用</span>
-                  <button type="button" onClick={addPersonalExpense}>
-                    保存个人费用
-                  </button>
-                </div>
-                <PersonalList
-                  trip={currentTrip}
-                  items={currentTrip.personalExpenses}
-                  onDelete={(id) => deleteItem("personalExpenses", id)}
-                />
-              </Panel>
+	          {ledgerTab === "personal" && (
+	            <section className="content-grid">
+	              <Panel title="个人费用清单" kicker="不计入公共总费用">
+	                <div className="list-toolbar">
+	                  <span>只计入成员个人清单，不进入公共总费用</span>
+	                  <button type="button" onClick={() => setEntryForm("personal")}>
+	                    新增个人
+	                  </button>
+	                </div>
+	                <PersonalList
+	                  trip={currentTrip}
+	                  items={currentTrip.personalExpenses}
+	                  onDelete={(id) => deleteItem("personalExpenses", id)}
+	                />
+	              </Panel>
 
-              <Panel title="自付扣减" kicker="成员已自付项目">
-                <div className="form-grid">
-                  <select
-                    value={adjustForm.memberId}
-                    onChange={(event) => setAdjustForm((form) => ({ ...form, memberId: event.target.value }))}
-                  >
-                    {currentTrip.members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    value={adjustForm.title}
-                    onChange={(event) => setAdjustForm((form) => ({ ...form, title: event.target.value }))}
-                    placeholder="说明"
-                  />
-                  <input
-                    inputMode="decimal"
-                    value={adjustForm.amount}
-                    onChange={(event) => setAdjustForm((form) => ({ ...form, amount: event.target.value }))}
-                    placeholder="扣减金额，如 -90"
-                  />
-                  <input
-                    value={adjustForm.note}
-                    onChange={(event) => setAdjustForm((form) => ({ ...form, note: event.target.value }))}
-                    placeholder="备注，可选"
-                  />
-                </div>
-                <div className="form-footer">
-                  <span>自付只用于成员最终应付扣减，不计入统计总额</span>
-                  <button type="button" onClick={addAdjustment}>
-                    保存自付
-                  </button>
-                </div>
-                <AdjustmentList
-                  trip={currentTrip}
-                  items={currentTrip.adjustments}
-                  onDelete={(id) => deleteItem("adjustments", id)}
-                />
-              </Panel>
-            </section>
-          )}
+	            </section>
+	          )}
 
           {ledgerTab === "settlement" && (
             <section className="content-grid settlement-grid">
@@ -952,7 +767,262 @@ export default function Home() {
 	          )}
         </>
       )}
+
+      {createModal === "trip" && (
+        <Modal title="新建账单" kicker="出行管理" onClose={() => setCreateModal(null)}>
+          <div className="form-grid single-form">
+            <input
+              value={newTripTitle}
+              onChange={(event) => setNewTripTitle(event.target.value)}
+              placeholder="新出行账单名称"
+            />
+          </div>
+          <div className="form-footer">
+            <button type="button" className="ghost-button" onClick={() => setCreateModal(null)}>
+              取消
+            </button>
+            <button type="button" onClick={createTrip}>
+              保存账单
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {createModal === "person" && (
+        <Modal title="新增人员" kicker="人员管理" onClose={() => setCreateModal(null)}>
+          <div className="form-grid single-form">
+            <input
+              value={personName}
+              onChange={(event) => setPersonName(event.target.value)}
+              placeholder="人员姓名"
+            />
+          </div>
+          <div className="form-footer">
+            <button type="button" className="ghost-button" onClick={() => setCreateModal(null)}>
+              取消
+            </button>
+            <button type="button" onClick={addGlobalPerson}>
+              保存人员
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {createModal === "category" && (
+        <Modal title="新增类别" kicker="类别管理" onClose={() => setCreateModal(null)}>
+          <div className="form-grid single-form">
+            <input
+              value={categoryName}
+              onChange={(event) => setCategoryName(event.target.value)}
+              placeholder="类别名称，如住宿/餐饮"
+            />
+          </div>
+          <div className="form-footer">
+            <button type="button" className="ghost-button" onClick={() => setCreateModal(null)}>
+              取消
+            </button>
+            <button type="button" onClick={addCategory}>
+              保存类别
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {entryForm === "shared" && (
+        <Modal title="公共费用录入" kicker="多人分摊" onClose={() => setEntryForm(null)}>
+          <div className="form-grid">
+            <input
+              value={sharedForm.title}
+              onChange={(event) => setSharedForm((form) => ({ ...form, title: event.target.value }))}
+              placeholder="事项，如酒店/海鲜馆"
+            />
+            <input
+              inputMode="decimal"
+              value={sharedForm.amount}
+              onChange={(event) => setSharedForm((form) => ({ ...form, amount: event.target.value }))}
+              placeholder="金额"
+            />
+            <select
+              value={sharedForm.category}
+              onChange={(event) => setSharedForm((form) => ({ ...form, category: event.target.value }))}
+            >
+              {appState.categories.map((category) => (
+                <option key={category}>{category}</option>
+              ))}
+            </select>
+            <select
+              value={sharedForm.payerId}
+              onChange={(event) => setSharedForm((form) => ({ ...form, payerId: event.target.value }))}
+            >
+              <option value="">公共付款</option>
+              {currentTrip.members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+            <input
+              className="wide-field"
+              value={sharedForm.note}
+              onChange={(event) => setSharedForm((form) => ({ ...form, note: event.target.value }))}
+              placeholder="备注，可选"
+            />
+          </div>
+          <ParticipantPicker
+            members={currentTrip.members}
+            selectedIds={sharedForm.participantIds}
+            onToggle={(id) =>
+              setSharedForm((form) => ({
+                ...form,
+                participantIds: toggleIds(form.participantIds, id),
+              }))
+            }
+            onSelectAll={() => setAllParticipants("shared")}
+          />
+          <div className="form-footer">
+            <span>
+              该项人均：
+              {formatMoney(splitAmount(Number(sharedForm.amount), sharedForm.participantIds.length))}
+            </span>
+            <button type="button" className="ghost-button" onClick={() => setEntryForm(null)}>
+              取消
+            </button>
+            <button type="button" onClick={addSharedExpense}>
+              保存公共费用
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {entryForm === "travel" && (
+        <Modal title="出行费用录入" kicker="车票/机票/城际交通" onClose={() => setEntryForm(null)}>
+          <div className="form-grid">
+            <input
+              value={travelForm.title}
+              onChange={(event) => setTravelForm((form) => ({ ...form, title: event.target.value }))}
+              placeholder="行程，如青岛-长沙往返"
+            />
+            <input
+              inputMode="decimal"
+              value={travelForm.amount}
+              onChange={(event) => setTravelForm((form) => ({ ...form, amount: event.target.value }))}
+              placeholder="金额"
+            />
+            <input
+              className="wide-field"
+              value={travelForm.note}
+              onChange={(event) => setTravelForm((form) => ({ ...form, note: event.target.value }))}
+              placeholder="公式或备注，如789+789=1578"
+            />
+          </div>
+          <ParticipantPicker
+            members={currentTrip.members}
+            selectedIds={travelForm.participantIds}
+            onToggle={(id) =>
+              setTravelForm((form) => ({
+                ...form,
+                participantIds: toggleIds(form.participantIds, id),
+              }))
+            }
+            onSelectAll={() => setAllParticipants("travel")}
+          />
+          <div className="form-footer">
+            <span>
+              该项人均：
+              {formatMoney(splitAmount(Number(travelForm.amount), travelForm.participantIds.length))}
+            </span>
+            <button type="button" className="ghost-button" onClick={() => setEntryForm(null)}>
+              取消
+            </button>
+            <button type="button" onClick={addTravelCost}>
+              保存出行费用
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {entryForm === "personal" && (
+        <Modal title="个人费用录入" kicker="成员个人花销" onClose={() => setEntryForm(null)}>
+          <div className="form-grid">
+            <select
+              value={personalForm.memberId}
+              onChange={(event) => setPersonalForm((form) => ({ ...form, memberId: event.target.value }))}
+            >
+              {currentTrip.members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={personalForm.title}
+              onChange={(event) => setPersonalForm((form) => ({ ...form, title: event.target.value }))}
+              placeholder="个人事项"
+            />
+            <input
+              inputMode="decimal"
+              value={personalForm.amount}
+              onChange={(event) => setPersonalForm((form) => ({ ...form, amount: event.target.value }))}
+              placeholder="金额"
+            />
+            <input
+              value={personalForm.date}
+              onChange={(event) => setPersonalForm((form) => ({ ...form, date: event.target.value }))}
+              placeholder="日期，可选"
+            />
+            <input
+              className="wide-field"
+              value={personalForm.note}
+              onChange={(event) => setPersonalForm((form) => ({ ...form, note: event.target.value }))}
+              placeholder="备注/公式，可选"
+            />
+          </div>
+          <div className="form-footer">
+            <span>会计入该成员个人合计，不进入公共总费用</span>
+            <button type="button" className="ghost-button" onClick={() => setEntryForm(null)}>
+              取消
+            </button>
+            <button type="button" onClick={addPersonalExpense}>
+              保存个人费用
+            </button>
+          </div>
+        </Modal>
+      )}
     </main>
+  );
+}
+
+function Modal({
+  title,
+  kicker,
+  children,
+  onClose,
+}: {
+  title: string;
+  kicker: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <section
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <div className="panel-heading modal-heading">
+          <div>
+            <span>{kicker}</span>
+            <h2>{title}</h2>
+          </div>
+          <button type="button" className="modal-close" aria-label="关闭弹窗" onClick={onClose}>
+            x
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
   );
 }
 
@@ -1182,7 +1252,7 @@ function SettlementTable({ totals, onOpen }: { totals: MemberTotal[]; onOpen: (i
         <span>出行</span>
         <span>公共</span>
         <span>个人</span>
-        <span>自付</span>
+	        <span>已付抵扣</span>
       </div>
       {totals.map((item) => (
         <button className="table-row table-action" role="row" key={item.member.id} type="button" onClick={() => onOpen(item.member.id)}>
@@ -1191,7 +1261,7 @@ function SettlementTable({ totals, onOpen }: { totals: MemberTotal[]; onOpen: (i
           <span>{formatMoney(item.travel)}</span>
           <span>{formatMoney(item.shared)}</span>
           <span>{formatMoney(item.personal)}</span>
-          <span>{formatMoney(item.adjustment)}</span>
+	          <span>{formatMoney(item.adjustment - item.paid)}</span>
         </button>
       ))}
     </div>
@@ -1311,15 +1381,24 @@ function ExpenseList({ trip, items, onDelete }: { trip: Trip; items: SharedExpen
   if (items.length === 0) return <Empty text="暂无公共费用" />;
   return (
     <div className="item-list">
-      {items.map((item) => (
-        <article className="ledger-item" key={item.id}>
-          <div>
-            <strong>{item.title}</strong>
-            <span>{item.category} / {item.participantIds.map((id) => getMemberName(trip, id)).join("、")}</span>
-          </div>
+	      {items.map((item) => (
+	        <article className="ledger-item" key={item.id}>
+	          <div className="ledger-main">
+	            <div className="ledger-title-row">
+	              <strong>{item.title}</strong>
+	              <span className="type-tag">{item.category}</span>
+	            </div>
+	            <div className="ledger-meta-grid">
+	              <span>付款人</span>
+	              <b>{item.payerId ? getMemberName(trip, item.payerId) : "公共"}</b>
+	              <span>分摊人</span>
+	              <b>{item.participantIds.map((id) => getMemberName(trip, id)).join("、")}</b>
+	            </div>
+	            {item.note && <em>{item.note}</em>}
+	          </div>
           <div className="item-amount">
-            <b>{formatMoney(item.amount)}</b>
             <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
+            <b>{formatMoney(item.amount)}</b>
           </div>
           <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
             x
@@ -1336,14 +1415,20 @@ function TravelList({ trip, items, onDelete }: { trip: Trip; items: TravelCost[]
     <div className="item-list">
       {items.map((item) => (
         <article className="ledger-item" key={item.id}>
-          <div>
-            <strong>{item.title}</strong>
-            <span>{item.participantIds.map((id) => getMemberName(trip, id)).join("、")}</span>
+          <div className="ledger-main">
+            <div className="ledger-title-row">
+              <strong>{item.title}</strong>
+              <span className="type-tag">出行</span>
+            </div>
+            <div className="ledger-meta-grid">
+              <span>分摊人</span>
+              <b>{item.participantIds.map((id) => getMemberName(trip, id)).join("、")}</b>
+            </div>
             {item.note && <em>{item.note}</em>}
           </div>
           <div className="item-amount">
-            <b>{formatMoney(item.amount)}</b>
             <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
+            <b>{formatMoney(item.amount)}</b>
           </div>
           <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
             x
@@ -1360,41 +1445,26 @@ function PersonalList({ trip, items, onDelete }: { trip: Trip; items: PersonalEx
     <div className="item-list">
       {items.map((item) => (
         <article className="ledger-item" key={item.id}>
-          <div>
-            <strong>{item.title}</strong>
-            <span>
-              {getMemberName(trip, item.memberId)}
-              {item.date ? ` / ${item.date}` : ""}
-            </span>
+          <div className="ledger-main">
+            <div className="ledger-title-row">
+              <strong>{item.title}</strong>
+              <span className="type-tag">个人</span>
+            </div>
+            <div className="ledger-meta-grid">
+              <span>所属人</span>
+              <b>{getMemberName(trip, item.memberId)}</b>
+              {item.date && (
+                <>
+                  <span>日期</span>
+                  <b>{item.date}</b>
+                </>
+              )}
+            </div>
             {item.note && <em>{item.note}</em>}
           </div>
           <div className="item-amount">
-            <b>{formatMoney(item.amount)}</b>
             <small>个人费用</small>
-          </div>
-          <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
-            x
-          </button>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function AdjustmentList({ trip, items, onDelete }: { trip: Trip; items: Adjustment[]; onDelete: (id: string) => void }) {
-  if (items.length === 0) return <Empty text="暂无自付记录" />;
-  return (
-    <div className="item-list">
-      {items.map((item) => (
-        <article className="ledger-item" key={item.id}>
-          <div>
-            <strong>{item.title}</strong>
-            <span>{getMemberName(trip, item.memberId)}</span>
-            {item.note && <em>{item.note}</em>}
-          </div>
-          <div className="item-amount">
             <b>{formatMoney(item.amount)}</b>
-            <small>自付</small>
           </div>
           <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
             x

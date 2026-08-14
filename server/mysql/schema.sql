@@ -38,10 +38,7 @@ CREATE TABLE IF NOT EXISTS trip_members (
   person_id VARCHAR(64) NOT NULL COMMENT '人员ID',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '本次出行成员排序值',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (trip_id, person_id),
-  KEY idx_trip_members_person (person_id),
-  CONSTRAINT fk_trip_members_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
-  CONSTRAINT fk_trip_members_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+  PRIMARY KEY (trip_id, person_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行账本成员关联表';
 
 CREATE TABLE IF NOT EXISTS shared_expenses (
@@ -50,23 +47,18 @@ CREATE TABLE IF NOT EXISTS shared_expenses (
   title VARCHAR(200) NOT NULL COMMENT '费用事项名称',
   category_name VARCHAR(100) NOT NULL COMMENT '公共费用类别名称',
   amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '费用金额',
+  payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款',
   note TEXT NULL COMMENT '备注',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_shared_expenses_trip (trip_id),
-  KEY idx_shared_expenses_category (category_name),
-  CONSTRAINT fk_shared_expenses_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公共费用明细表';
 
 CREATE TABLE IF NOT EXISTS shared_expense_participants (
   expense_id VARCHAR(96) NOT NULL COMMENT '公共费用ID',
   person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-  PRIMARY KEY (expense_id, person_id),
-  KEY idx_shared_expense_participants_person (person_id),
-  CONSTRAINT fk_shared_expense_participants_expense FOREIGN KEY (expense_id) REFERENCES shared_expenses (id) ON DELETE CASCADE,
-  CONSTRAINT fk_shared_expense_participants_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+  PRIMARY KEY (expense_id, person_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公共费用参与分摊人员表';
 
 CREATE TABLE IF NOT EXISTS travel_costs (
@@ -77,19 +69,14 @@ CREATE TABLE IF NOT EXISTS travel_costs (
   note TEXT NULL COMMENT '备注或计算公式',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_travel_costs_trip (trip_id),
-  CONSTRAINT fk_travel_costs_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行费用明细表';
 
 CREATE TABLE IF NOT EXISTS travel_cost_participants (
   travel_cost_id VARCHAR(96) NOT NULL COMMENT '出行费用ID',
   person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-  PRIMARY KEY (travel_cost_id, person_id),
-  KEY idx_travel_cost_participants_person (person_id),
-  CONSTRAINT fk_travel_cost_participants_cost FOREIGN KEY (travel_cost_id) REFERENCES travel_costs (id) ON DELETE CASCADE,
-  CONSTRAINT fk_travel_cost_participants_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+  PRIMARY KEY (travel_cost_id, person_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行费用参与分摊人员表';
 
 CREATE TABLE IF NOT EXISTS personal_expenses (
@@ -102,11 +89,7 @@ CREATE TABLE IF NOT EXISTS personal_expenses (
   note TEXT NULL COMMENT '备注或计算公式',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_personal_expenses_trip (trip_id),
-  KEY idx_personal_expenses_person (person_id),
-  CONSTRAINT fk_personal_expenses_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
-  CONSTRAINT fk_personal_expenses_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='个人费用明细表';
 
 CREATE TABLE IF NOT EXISTS adjustments (
@@ -118,9 +101,5 @@ CREATE TABLE IF NOT EXISTS adjustments (
   note TEXT NULL COMMENT '备注',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  KEY idx_adjustments_trip (trip_id),
-  KEY idx_adjustments_person (person_id),
-  CONSTRAINT fk_adjustments_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
-  CONSTRAINT fk_adjustments_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='成员自付扣减记录表';

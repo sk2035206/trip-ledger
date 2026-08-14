@@ -57,6 +57,7 @@ export function migrateTripsToState(
       members: tripMembers,
       sharedExpenses: trip.sharedExpenses.map((item) => ({
         ...item,
+        payerId: item.payerId ? (idMap.get(item.payerId) ?? item.payerId) : undefined,
         participantIds: replaceIds(item.participantIds, idMap),
       })),
       travelCosts: trip.travelCosts.map((item) => ({
@@ -104,6 +105,9 @@ export function calculateTrip(trip: Trip) {
       if (!item.participantIds.includes(member.id)) return sum;
       return sum + splitAmount(item.amount, item.participantIds.length);
     }, 0);
+    const paid = trip.sharedExpenses
+      .filter((item) => item.payerId === member.id)
+      .reduce((sum, item) => sum + item.amount, 0);
     const travelTotal = trip.travelCosts.reduce((sum, item) => {
       if (!item.participantIds.includes(member.id)) return sum;
       return sum + splitAmount(item.amount, item.participantIds.length);
@@ -121,11 +125,13 @@ export function calculateTrip(trip: Trip) {
       travel: travelTotal,
       personal,
       adjustment,
-      total: shared + travelTotal + personal + adjustment,
+      paid,
+      total: shared + travelTotal + personal + adjustment - paid,
     };
   });
 
   const sharedTotal = trip.sharedExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const paidTotal = trip.sharedExpenses.reduce((sum, item) => sum + (item.payerId ? item.amount : 0), 0);
   const travelTotal = trip.travelCosts.reduce((sum, item) => sum + item.amount, 0);
   const personalTotal = trip.personalExpenses.reduce((sum, item) => sum + item.amount, 0);
   const adjustmentTotal = trip.adjustments.reduce((sum, item) => sum + item.amount, 0);
@@ -138,6 +144,7 @@ export function calculateTrip(trip: Trip) {
     travelTotal,
     personalTotal,
     adjustmentTotal,
+    paidTotal,
     expenseTotal,
     finalTotal: expenseTotal,
     payableTotal,
@@ -156,6 +163,7 @@ export function calculateGlobal(state: AppState) {
         travelTotal: acc.travelTotal + total.travelTotal,
         personalTotal: acc.personalTotal + total.personalTotal,
         adjustmentTotal: acc.adjustmentTotal + total.adjustmentTotal,
+        paidTotal: acc.paidTotal + total.paidTotal,
         finalTotal: acc.finalTotal + total.expenseTotal,
         payableTotal: acc.payableTotal + total.payableTotal,
       };
@@ -167,6 +175,7 @@ export function calculateGlobal(state: AppState) {
       travelTotal: 0,
       personalTotal: 0,
       adjustmentTotal: 0,
+      paidTotal: 0,
       finalTotal: 0,
       payableTotal: 0,
     },
@@ -229,7 +238,7 @@ export function getMemberLedgerItems(trip: Trip, memberId: string): LedgerLine[]
       category: item.category,
       sourceAmount: item.amount,
       amount: splitAmount(item.amount, item.participantIds.length),
-      note: `${item.participantIds.length}人分摊`,
+      note: item.payerId ? `${item.participantIds.length}人分摊 / ${getMemberName(trip, item.payerId)}已付` : `${item.participantIds.length}人分摊`,
     }));
   const travelLines = trip.travelCosts
     .filter((item) => item.participantIds.includes(memberId))
@@ -264,7 +273,18 @@ export function getMemberLedgerItems(trip: Trip, memberId: string): LedgerLine[]
       amount: item.amount,
       note: item.note,
     }));
-  return [...shared, ...travelLines, ...personal, ...adjustments];
+  const paid = trip.sharedExpenses
+    .filter((item) => item.payerId === memberId)
+    .map<LedgerLine>((item) => ({
+      id: `${item.id}-payer`,
+      title: `${item.title} 已付款`,
+      type: "自付",
+      category: item.category,
+      sourceAmount: item.amount,
+      amount: -item.amount,
+      note: "公共费用付款人扣减",
+    }));
+  return [...shared, ...travelLines, ...personal, ...adjustments, ...paid];
 }
 
 export function getMemberCategoryTotals(items: LedgerLine[]) {

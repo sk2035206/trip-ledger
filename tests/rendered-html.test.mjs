@@ -12,7 +12,8 @@ test("builds the trip ledger app", async () => {
     readFile(new URL("../dist/server/vinext-server.json", import.meta.url), "utf8"),
   ]);
 
-  assert.match(layout, /title:\s*"旅行分账"/);
+  assert.match(layout, /shareTitle = "旅行分账"/);
+  assert.match(layout, /WechatShare/);
   assert.match(page, /旅行分账工作台/);
   assert.match(page, /全局数据/);
   assert.match(page, /管理类/);

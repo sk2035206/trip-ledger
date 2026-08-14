@@ -42,6 +42,14 @@ type LockRow = RowDataPacket & {
   acquired: number | string | null;
 };
 
+type ConstraintRow = RowDataPacket & {
+  CONSTRAINT_NAME: string;
+};
+
+type IndexRow = RowDataPacket & {
+  INDEX_NAME: string;
+};
+
 type PersonRow = RowDataPacket & {
   id: string;
   name: string;
@@ -71,6 +79,7 @@ type SharedExpenseRow = RowDataPacket & {
   title: string;
   category_name: string;
   amount: number | string;
+  payer_person_id: string | null;
   note: string | null;
 };
 
@@ -154,10 +163,7 @@ const schemaStatements = [
       person_id VARCHAR(64) NOT NULL COMMENT '人员ID',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '本次出行成员排序值',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      PRIMARY KEY (trip_id, person_id),
-      KEY idx_trip_members_person (person_id),
-      CONSTRAINT fk_trip_members_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
-      CONSTRAINT fk_trip_members_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+      PRIMARY KEY (trip_id, person_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行账本成员关联表'
   `,
   `
@@ -167,13 +173,11 @@ const schemaStatements = [
       title VARCHAR(200) NOT NULL COMMENT '费用事项名称',
       category_name VARCHAR(100) NOT NULL COMMENT '公共费用类别名称',
       amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '费用金额',
+      payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款',
       note TEXT NULL COMMENT '备注',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-      KEY idx_shared_expenses_trip (trip_id),
-      KEY idx_shared_expenses_category (category_name),
-      CONSTRAINT fk_shared_expenses_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公共费用明细表'
   `,
   `
@@ -181,10 +185,7 @@ const schemaStatements = [
       expense_id VARCHAR(96) NOT NULL COMMENT '公共费用ID',
       person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-      PRIMARY KEY (expense_id, person_id),
-      KEY idx_shared_expense_participants_person (person_id),
-      CONSTRAINT fk_shared_expense_participants_expense FOREIGN KEY (expense_id) REFERENCES shared_expenses (id) ON DELETE CASCADE,
-      CONSTRAINT fk_shared_expense_participants_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+      PRIMARY KEY (expense_id, person_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公共费用参与分摊人员表'
   `,
   `
@@ -196,9 +197,7 @@ const schemaStatements = [
       note TEXT NULL COMMENT '备注或计算公式',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-      KEY idx_travel_costs_trip (trip_id),
-      CONSTRAINT fk_travel_costs_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行费用明细表'
   `,
   `
@@ -206,10 +205,7 @@ const schemaStatements = [
       travel_cost_id VARCHAR(96) NOT NULL COMMENT '出行费用ID',
       person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-      PRIMARY KEY (travel_cost_id, person_id),
-      KEY idx_travel_cost_participants_person (person_id),
-      CONSTRAINT fk_travel_cost_participants_cost FOREIGN KEY (travel_cost_id) REFERENCES travel_costs (id) ON DELETE CASCADE,
-      CONSTRAINT fk_travel_cost_participants_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+      PRIMARY KEY (travel_cost_id, person_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行费用参与分摊人员表'
   `,
   `
@@ -223,11 +219,7 @@ const schemaStatements = [
       note TEXT NULL COMMENT '备注或计算公式',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-      KEY idx_personal_expenses_trip (trip_id),
-      KEY idx_personal_expenses_person (person_id),
-      CONSTRAINT fk_personal_expenses_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
-      CONSTRAINT fk_personal_expenses_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='个人费用明细表'
   `,
   `
@@ -240,14 +232,40 @@ const schemaStatements = [
       note TEXT NULL COMMENT '备注',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-      KEY idx_adjustments_trip (trip_id),
-      KEY idx_adjustments_person (person_id),
-      CONSTRAINT fk_adjustments_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE,
-      CONSTRAINT fk_adjustments_person FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='成员自付扣减记录表'
   `,
 ];
+
+const relationshipForeignKeys = [
+  { table: "trip_members", name: "fk_trip_members_trip" },
+  { table: "trip_members", name: "fk_trip_members_person" },
+  { table: "shared_expenses", name: "fk_shared_expenses_trip" },
+  { table: "shared_expenses", name: "fk_shared_expenses_payer" },
+  { table: "shared_expense_participants", name: "fk_shared_expense_participants_expense" },
+  { table: "shared_expense_participants", name: "fk_shared_expense_participants_person" },
+  { table: "travel_costs", name: "fk_travel_costs_trip" },
+  { table: "travel_cost_participants", name: "fk_travel_cost_participants_cost" },
+  { table: "travel_cost_participants", name: "fk_travel_cost_participants_person" },
+  { table: "personal_expenses", name: "fk_personal_expenses_trip" },
+  { table: "personal_expenses", name: "fk_personal_expenses_person" },
+  { table: "adjustments", name: "fk_adjustments_trip" },
+  { table: "adjustments", name: "fk_adjustments_person" },
+] as const;
+
+const relationshipIndexes = [
+  { table: "trip_members", name: "idx_trip_members_person" },
+  { table: "shared_expenses", name: "idx_shared_expenses_trip" },
+  { table: "shared_expenses", name: "idx_shared_expenses_category" },
+  { table: "shared_expenses", name: "idx_shared_expenses_payer" },
+  { table: "shared_expense_participants", name: "idx_shared_expense_participants_person" },
+  { table: "travel_costs", name: "idx_travel_costs_trip" },
+  { table: "travel_cost_participants", name: "idx_travel_cost_participants_person" },
+  { table: "personal_expenses", name: "idx_personal_expenses_trip" },
+  { table: "personal_expenses", name: "idx_personal_expenses_person" },
+  { table: "adjustments", name: "idx_adjustments_trip" },
+  { table: "adjustments", name: "idx_adjustments_person" },
+] as const;
 
 const schemaCommentStatements = [
   "ALTER TABLE trip_ledger_state COMMENT = '历史账本状态快照表，仅作为旧数据迁移来源'",
@@ -286,6 +304,7 @@ const schemaCommentStatements = [
   "ALTER TABLE shared_expenses MODIFY title VARCHAR(200) NOT NULL COMMENT '费用事项名称'",
   "ALTER TABLE shared_expenses MODIFY category_name VARCHAR(100) NOT NULL COMMENT '公共费用类别名称'",
   "ALTER TABLE shared_expenses MODIFY amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '费用金额'",
+  "ALTER TABLE shared_expenses MODIFY payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款'",
   "ALTER TABLE shared_expenses MODIFY note TEXT NULL COMMENT '备注'",
   "ALTER TABLE shared_expenses MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值'",
   "ALTER TABLE shared_expenses MODIFY created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'",
@@ -344,9 +363,75 @@ async function initializeSchema() {
   for (const statement of schemaStatements) {
     await db.execute(statement);
   }
+  await ensureSharedExpensePayerColumn(db);
+  await removeRelationshipConstraints(db);
   for (const statement of schemaCommentStatements) {
     await db.execute(statement);
   }
+}
+
+async function ensureSharedExpensePayerColumn(db: Pool) {
+  const [rows] = await db.query<Array<RowDataPacket & { count: number | string }>>(
+    `
+      SELECT COUNT(*) AS count
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'shared_expenses'
+        AND COLUMN_NAME = 'payer_person_id'
+    `,
+  );
+  if (Number(rows[0]?.count ?? 0) > 0) return;
+
+  await db.execute(
+    "ALTER TABLE shared_expenses ADD COLUMN payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款' AFTER amount",
+  );
+}
+
+async function removeRelationshipConstraints(db: Pool) {
+  for (const foreignKey of relationshipForeignKeys) {
+    if (await foreignKeyExists(db, foreignKey.table, foreignKey.name)) {
+      await db.execute(`ALTER TABLE ${foreignKey.table} DROP FOREIGN KEY ${foreignKey.name}`);
+    }
+  }
+
+  for (const index of relationshipIndexes) {
+    if (await indexExists(db, index.table, index.name)) {
+      await db.execute(`ALTER TABLE ${index.table} DROP INDEX ${index.name}`);
+    }
+  }
+}
+
+async function foreignKeyExists(db: Pool, table: string, name: string) {
+  const rows = await queryRows<ConstraintRow>(
+    db,
+    `
+      SELECT CONSTRAINT_NAME
+      FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND CONSTRAINT_NAME = ?
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+      LIMIT 1
+    `,
+    [table, name],
+  );
+  return rows.length > 0;
+}
+
+async function indexExists(db: Pool, table: string, name: string) {
+  const rows = await queryRows<IndexRow>(
+    db,
+    `
+      SELECT INDEX_NAME
+      FROM INFORMATION_SCHEMA.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND INDEX_NAME = ?
+      LIMIT 1
+    `,
+    [table, name],
+  );
+  return rows.length > 0;
 }
 
 export async function getBusinessTableStats(): Promise<TableStat[]> {
@@ -457,7 +542,7 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
     queryRows<SharedExpenseRow>(
       db,
       `
-        SELECT id, trip_id, title, category_name, amount, note
+        SELECT id, trip_id, title, category_name, amount, payer_person_id, note
         FROM shared_expenses
         ORDER BY trip_id, sort_order, created_at, id
       `,
@@ -532,6 +617,7 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
       title: row.title,
       category: row.category_name,
       amount: toNumber(row.amount),
+      payerId: row.payer_person_id ?? undefined,
       participantIds: sharedParticipants.get(row.id) ?? [],
       note: row.note ?? undefined,
     });
@@ -653,6 +739,7 @@ async function insertState(connection: PoolConnection, state: AppState) {
         normalizedTitle(expense.title, "未命名费用"),
         normalizedTitle(expense.category, "其他"),
         expense.amount,
+        memberIds.has(expense.payerId ?? "") ? expense.payerId : null,
         nullableText(expense.note),
         index,
       ]);
@@ -708,7 +795,7 @@ async function insertState(connection: PoolConnection, state: AppState) {
     connection,
     `
       INSERT INTO shared_expenses
-        (id, trip_id, title, category_name, amount, note, sort_order)
+        (id, trip_id, title, category_name, amount, payer_person_id, note, sort_order)
       VALUES ?
     `,
     sharedRows,
