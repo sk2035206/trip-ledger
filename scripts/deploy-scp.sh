@@ -9,32 +9,31 @@ if [ -f "$CONFIG_FILE" ]; then
   source "$CONFIG_FILE"
 fi
 
-DEPLOY_TARGET="${DEPLOY_TARGET:-}"
+DEPLOY_TARGET="${DEPLOY_TARGET:-xxy}"
 REMOTE_FRONTEND_DIR="${REMOTE_FRONTEND_DIR:-/usr/share/nginx/html/trip-ledger}"
 REMOTE_BACKEND_DIR="${REMOTE_BACKEND_DIR:-/home/trip-ledger}"
-REMOTE_TMP_DIR="${REMOTE_TMP_DIR:-/tmp}"
 FRONTEND_PACKAGE="$ROOT_DIR/release/trip-ledger-frontend-latest.tar.gz"
 BACKEND_PACKAGE="$ROOT_DIR/release/trip-ledger-backend-latest.tar.gz"
 
 if [ -z "$DEPLOY_TARGET" ]; then
-  echo "请先设置 DEPLOY_TARGET，例如：DEPLOY_TARGET=root@your-server"
+  echo "请先设置 DEPLOY_TARGET，例如：DEPLOY_TARGET=xxy"
   echo "也可以复制 config/deploy.example.env 为 config/deploy.env 后填写。"
   exit 1
 fi
 
 "$ROOT_DIR/scripts/release-build.sh"
 
-scp "$FRONTEND_PACKAGE" "$DEPLOY_TARGET:$REMOTE_TMP_DIR/trip-ledger-frontend.tar.gz"
-scp "$BACKEND_PACKAGE" "$DEPLOY_TARGET:$REMOTE_TMP_DIR/trip-ledger-backend.tar.gz"
+ssh "$DEPLOY_TARGET" "mkdir -p '$REMOTE_FRONTEND_DIR' '$REMOTE_BACKEND_DIR'"
+scp "$FRONTEND_PACKAGE" "$DEPLOY_TARGET:$REMOTE_FRONTEND_DIR/trip-ledger-frontend.tar.gz"
+scp "$BACKEND_PACKAGE" "$DEPLOY_TARGET:$REMOTE_BACKEND_DIR/trip-ledger-backend.tar.gz"
 
 cat <<EOF
 上传完成。
 
 请在服务器执行：
   mkdir -p "$REMOTE_FRONTEND_DIR" "$REMOTE_BACKEND_DIR"
-  rm -rf "$REMOTE_FRONTEND_DIR"/* "$REMOTE_BACKEND_DIR"/*
-  tar -xzf "$REMOTE_TMP_DIR/trip-ledger-frontend.tar.gz" -C "$REMOTE_FRONTEND_DIR"
-  tar -xzf "$REMOTE_TMP_DIR/trip-ledger-backend.tar.gz" -C "$REMOTE_BACKEND_DIR"
+  tar -xzf "$REMOTE_FRONTEND_DIR/trip-ledger-frontend.tar.gz" -C "$REMOTE_FRONTEND_DIR"
+  tar -xzf "$REMOTE_BACKEND_DIR/trip-ledger-backend.tar.gz" -C "$REMOTE_BACKEND_DIR"
   cd "$REMOTE_BACKEND_DIR"
   npm ci
   cp -n config/mysql.example.json config/mysql.json

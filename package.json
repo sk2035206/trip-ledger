@@ -22,7 +22,7 @@
     "release:build": "scripts/release-build.sh",
     "deploy:scp": "scripts/deploy-scp.sh",
     "test": "npm run build && node --import tsx --test tests/*.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern release",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

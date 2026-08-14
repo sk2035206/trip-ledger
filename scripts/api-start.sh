@@ -7,11 +7,9 @@ PID_FILE="$LOG_DIR/api.pid"
 LOG_FILE="$LOG_DIR/api.log"
 HOST="${API_HOST:-127.0.0.1}"
 PORT="${API_PORT:-5174}"
-BUNDLED_NODE="/Users/make/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
 
-if [ -x "$BUNDLED_NODE/node" ]; then
-  export PATH="$BUNDLED_NODE:$PATH"
-fi
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/node-runtime.sh"
 
 mkdir -p "$LOG_DIR"
 

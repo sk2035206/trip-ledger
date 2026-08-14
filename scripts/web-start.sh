@@ -8,6 +8,9 @@ LOG_FILE="$LOG_DIR/web.log"
 HOST="${WEB_HOST:-127.0.0.1}"
 PORT="${WEB_PORT:-5173}"
 
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/node-runtime.sh"
+
 mkdir -p "$LOG_DIR"
 
 if [ -f "$PID_FILE" ]; then

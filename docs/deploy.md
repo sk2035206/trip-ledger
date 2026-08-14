@@ -29,10 +29,9 @@ cp config/deploy.example.env config/deploy.env
 修改 `config/deploy.env`：
 
 ```bash
-DEPLOY_TARGET=root@your-server
+DEPLOY_TARGET=xxy
 REMOTE_FRONTEND_DIR=/usr/share/nginx/html/trip-ledger
 REMOTE_BACKEND_DIR=/home/trip-ledger
-REMOTE_TMP_DIR=/tmp
 ```
 
 执行上传：
@@ -41,13 +40,14 @@ REMOTE_TMP_DIR=/tmp
 npm run deploy:scp
 ```
 
+默认会上传到 `xxy`，并自动创建远端目录。需要发到其他服务器时，修改 `config/deploy.env` 里的 `DEPLOY_TARGET`。
+
 ## 服务器解压与启动
 
 ```bash
 mkdir -p /usr/share/nginx/html/trip-ledger /home/trip-ledger
-rm -rf /usr/share/nginx/html/trip-ledger/* /home/trip-ledger/*
-tar -xzf /tmp/trip-ledger-frontend.tar.gz -C /usr/share/nginx/html/trip-ledger
-tar -xzf /tmp/trip-ledger-backend.tar.gz -C /home/trip-ledger
+tar -xzf /usr/share/nginx/html/trip-ledger/trip-ledger-frontend.tar.gz -C /usr/share/nginx/html/trip-ledger
+tar -xzf /home/trip-ledger/trip-ledger-backend.tar.gz -C /home/trip-ledger
 
 cd /home/trip-ledger
 npm ci
