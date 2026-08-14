@@ -594,10 +594,10 @@ export default function Home() {
 	            {[
 	              ["overview", "总览"],
 	              ["settlement", "清单"],
-	              ["members", "人员"],
 	              ["shared", "公费"],
 	              ["travel", "出行"],
 	              ["personal", "个人"],
+	              ["members", "人员"],
 	            ].map(([id, label]) => (
               <button
                 type="button"
@@ -1397,8 +1397,8 @@ function ExpenseList({ trip, items, onDelete }: { trip: Trip; items: SharedExpen
 	            {item.note && <em>{item.note}</em>}
 	          </div>
           <div className="item-amount">
-            <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
             <b>{formatMoney(item.amount)}</b>
+            <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
           </div>
           <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
             x
@@ -1427,8 +1427,8 @@ function TravelList({ trip, items, onDelete }: { trip: Trip; items: TravelCost[]
             {item.note && <em>{item.note}</em>}
           </div>
           <div className="item-amount">
-            <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
             <b>{formatMoney(item.amount)}</b>
+            <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
           </div>
           <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
             x
@@ -1463,8 +1463,8 @@ function PersonalList({ trip, items, onDelete }: { trip: Trip; items: PersonalEx
             {item.note && <em>{item.note}</em>}
           </div>
           <div className="item-amount">
-            <small>个人费用</small>
             <b>{formatMoney(item.amount)}</b>
+            <small>个人费用</small>
           </div>
           <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
             x
