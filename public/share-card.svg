@@ -1,0 +1,22 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F8FAF5"/>
+  <rect x="60" y="58" width="1080" height="514" rx="28" fill="#174C43"/>
+  <path d="M104 132C174 78 274 90 328 156C386 227 468 232 536 189C615 138 706 152 767 217C831 286 916 284 984 227C1045 176 1114 178 1140 207V572H60V178C72 160 87 145 104 132Z" fill="#D8A24D" opacity="0.22"/>
+  <circle cx="958" cy="166" r="78" fill="#D8A24D"/>
+  <circle cx="958" cy="166" r="42" fill="#FFF8E7" opacity="0.88"/>
+  <rect x="106" y="112" width="116" height="116" rx="24" fill="#FFF8E7"/>
+  <path d="M144 170H184M144 146H190M144 194H174" stroke="#174C43" stroke-width="14" stroke-linecap="round"/>
+  <path d="M193 151L207 165L184 188" stroke="#B88445" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="106" y="306" fill="#FFF8E7" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="92" font-weight="800">旅行分账</text>
+  <text x="110" y="382" fill="#E7EFE7" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="34" font-weight="600">公共费用、出行费用、个人费用与自付扣减一站式核算</text>
+  <g fill="#FFF8E7" opacity="0.92" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="28" font-weight="700">
+    <text x="116" y="486">多人旅行账单</text>
+    <text x="380" y="486">成员分摊清单</text>
+    <text x="644" y="486">MySQL 持久存储</text>
+  </g>
+  <g fill="#D8A24D">
+    <circle cx="92" cy="476" r="8"/>
+    <circle cx="356" cy="476" r="8"/>
+    <circle cx="620" cy="476" r="8"/>
+  </g>
+</svg>

@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { URL } from "node:url";
 import { readJson, sendJson, toApiError } from "./http/json";
 import { getLedgerState, getStorageHealth, saveLedgerState } from "./services/trip-ledger-service";
@@ -9,6 +11,7 @@ const corsOrigin = process.env.CORS_ORIGIN;
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  const apiPath = url.pathname.replace(/^\/ledger(?=\/api(?:\/|$))/, "");
 
   if (corsOrigin) {
     response.setHeader("Access-Control-Allow-Origin", corsOrigin);
@@ -23,17 +26,31 @@ const server = createServer(async (request, response) => {
   }
 
   try {
-    if (url.pathname === "/api/health" && request.method === "GET") {
+    if (apiPath === "/api/health" && request.method === "GET") {
       sendJson(response, 200, await getStorageHealth());
       return;
     }
 
-    if (url.pathname === "/api/state" && request.method === "GET") {
+    if (apiPath === "/api/share-card.png" && (request.method === "GET" || request.method === "HEAD")) {
+      const image = request.method === "GET" ? await readFile(join(process.cwd(), "public", "share-card.png")) : null;
+      response.writeHead(200, {
+        "Cache-Control": "public, max-age=86400",
+        "Content-Type": "image/png",
+      });
+      if (image) {
+        response.end(image);
+      } else {
+        response.end();
+      }
+      return;
+    }
+
+    if (apiPath === "/api/state" && request.method === "GET") {
       sendJson(response, 200, { state: await getLedgerState() });
       return;
     }
 
-    if (url.pathname === "/api/state" && request.method === "PUT") {
+    if (apiPath === "/api/state" && request.method === "PUT") {
       const payload = (await readJson(request)) as { state?: unknown };
       sendJson(response, 200, { state: await saveLedgerState(payload.state) });
       return;

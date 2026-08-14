@@ -57,6 +57,12 @@ vi config/mysql.json
 API_HOST=127.0.0.1 API_PORT=5174 WEB_HOST=127.0.0.1 WEB_PORT=5173 npm run prod:start
 ```
 
+如果正式访问域名不是 `https://jcxxy.cn/ledger/`，启动 Web 前设置公网地址，微信分享卡片会用它生成缩略图地址：
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://jcxxy.cn/ledger/ API_HOST=127.0.0.1 API_PORT=5174 WEB_HOST=127.0.0.1 WEB_PORT=5173 npm run prod:start
+```
+
 停止服务：
 
 ```bash

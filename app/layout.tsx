@@ -1,6 +1,18 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { WechatShare } from "./wechat-share";
 import "./globals.css";
+
+const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "https://jcxxy.cn/ledger/");
+const shareTitle = "旅行分账";
+const shareDescription = "用于多人旅行公共费用、出行费用、个人费用和成员自付扣减核算的 H5 分账工具。";
+const shareImage = new URL("/api/share-card.png", siteUrl).toString();
+const wechatSignatureUrl =
+  process.env.NEXT_PUBLIC_WECHAT_SIGNATURE_URL ?? "https://jcxxy.cn/gzh/api/wechat/signature";
+
+function normalizeSiteUrl(value: string) {
+  return value.endsWith("/") ? value : `${value}/`;
+}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,11 +25,34 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "旅行分账",
-  description: "用于旅行公共费用、个人费用和成员自付扣减核算的 H5 分账工具。",
+  metadataBase: new URL(siteUrl),
+  title: shareTitle,
+  description: shareDescription,
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+  },
+  openGraph: {
+    title: shareTitle,
+    description: shareDescription,
+    url: siteUrl,
+    siteName: shareTitle,
+    type: "website",
+    locale: "zh_CN",
+    images: [
+      {
+        url: shareImage,
+        width: 1200,
+        height: 630,
+        alt: "旅行分账账单工具",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: shareTitle,
+    description: shareDescription,
+    images: [shareImage],
   },
 };
 
@@ -31,6 +66,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <WechatShare
+          title={shareTitle}
+          description={shareDescription}
+          link={siteUrl}
+          imageUrl={shareImage}
+          signatureEndpoint={wechatSignatureUrl}
+        />
         {children}
       </body>
     </html>
