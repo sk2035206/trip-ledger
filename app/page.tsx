@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { WechatShare } from "./wechat-share";
 import { loadRemoteState, saveRemoteState } from "@/frontend/api-client";
 import { defaultCategories, defaultState } from "@/frontend/sample-data";
 import type {
@@ -34,6 +35,10 @@ import {
 const LEDGER_CACHE_KEYS = ["trip-ledger-v2", "trip-ledger-v1"];
 const REMOVED_LOCAL_KEYS = [...LEDGER_CACHE_KEYS, "trip-ledger-api-token"];
 const chartColors = ["#174c43", "#b88445", "#d8a24d", "#6f7f69", "#a25f3d", "#52728d", "#8a6a4f"];
+const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "https://jcxxy.cn/ledger/");
+const shareImage = new URL("/api/share-card.png", siteUrl).toString();
+const wechatSignatureUrl =
+  process.env.NEXT_PUBLIC_WECHAT_SIGNATURE_URL ?? "https://jcxxy.cn/gzh/api/wechat/signature";
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>(defaultState);
@@ -45,7 +50,8 @@ export default function Home() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultState.trips[0].members[0].id);
   const [detailFilter, setDetailFilter] = useState("全部");
-  const [copyState, setCopyState] = useState("复制清单");
+  const [sharedCategoryFilter, setSharedCategoryFilter] = useState("全部");
+  const [shareState, setShareState] = useState("分享账单");
   const [personName, setPersonName] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [newTripTitle, setNewTripTitle] = useState("");
@@ -95,6 +101,22 @@ export default function Home() {
     if (detailFilter === "全部") return memberLedgerItems;
     return memberLedgerItems.filter((item) => item.category === detailFilter);
   }, [detailFilter, memberLedgerItems]);
+  const selectedGroupLedgerItems = useMemo(
+    () => selectedGroupIds.flatMap((memberId) => getMemberLedgerItems(currentTrip, memberId)),
+    [currentTrip, selectedGroupIds],
+  );
+  const selectedGroupCategoryTotals = useMemo(
+    () => getMemberCategoryTotals(selectedGroupLedgerItems),
+    [selectedGroupLedgerItems],
+  );
+  const sharedCategoryOptions = useMemo(
+    () => Array.from(new Set(currentTrip.sharedExpenses.map((item) => item.category))),
+    [currentTrip.sharedExpenses],
+  );
+  const filteredSharedExpenses = useMemo(() => {
+    if (sharedCategoryFilter === "全部") return currentTrip.sharedExpenses;
+    return currentTrip.sharedExpenses.filter((item) => item.category === sharedCategoryFilter);
+  }, [currentTrip.sharedExpenses, sharedCategoryFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,63 +389,53 @@ export default function Home() {
     return sum + (item?.total ?? 0);
   }, 0);
 
-  const settlementText = useMemo(() => {
-    const lines = [
-      currentTrip.title,
-      "",
-      "费用明细",
-      ...currentTrip.sharedExpenses.map(
-        (item) =>
-          `${item.title}｜${formatMoney(item.amount)}｜人均 ${formatMoney(
-            splitAmount(item.amount, item.participantIds.length),
-          )}`,
-      ),
-      `公共合计：${formatMoney(totals.sharedTotal)}，参考人均：${formatMoney(totals.sharedAverage)}`,
-      "",
-      "出行费用",
-      ...currentTrip.travelCosts.map(
-        (item) =>
-          `${item.title}｜${formatMoney(item.amount)}｜人均 ${formatMoney(
-            splitAmount(item.amount, item.participantIds.length),
-          )}${item.note ? `｜${item.note}` : ""}`,
-      ),
-      currentTrip.travelCosts.length ? `出行合计：${formatMoney(totals.travelTotal)}` : "暂无出行费用",
-      "",
-      "个人费用清单",
-      ...currentTrip.personalExpenses.map(
-        (item) =>
-          `${getMemberName(currentTrip, item.memberId)}｜${item.title}｜${formatMoney(
-            item.amount,
-          )}${item.note ? `｜${item.note}` : ""}`,
-      ),
-      currentTrip.personalExpenses.length ? `个人费用合计：${formatMoney(totals.personalTotal)}` : "暂无个人费用",
-      "",
-      "费用总计",
-      ...totals.memberTotals.map(
-        (item) =>
-          `${item.member.name}：总计 ${formatMoney(item.total)}，公共 ${formatMoney(
-            item.shared,
-	          )}，出行 ${formatMoney(item.travel)}，个人 ${formatMoney(
-	            item.personal,
-	          )}，已付抵扣 ${formatMoney(item.adjustment - item.paid)}`,
-      ),
-    ];
-    return lines.join("\n");
-  }, [currentTrip, totals]);
+  async function shareCurrentTrip() {
+    const shareUrl = getTripShareUrl(currentTrip.id);
+    const title = `${currentTrip.title}分账清单`;
+    const text = `查看${currentTrip.title}的出行费用和成员分账结果`;
 
-  async function copySettlement() {
+    if (isWechatBrowser()) {
+      window.location.href = shareUrl;
+      return;
+    }
+
+    const copyShareLink = async () => {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareState("链接已复制");
+      window.setTimeout(() => setShareState("分享账单"), 1600);
+    };
+
     try {
-      await navigator.clipboard.writeText(settlementText);
-      setCopyState("已复制");
-      window.setTimeout(() => setCopyState("复制清单"), 1600);
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text, url: shareUrl });
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          await copyShareLink();
+          return;
+        }
+      }
+
+      await copyShareLink();
     } catch {
-      setCopyState("复制失败");
-      window.setTimeout(() => setCopyState("复制清单"), 1600);
+      setShareState("分享失败");
+      window.setTimeout(() => setShareState("分享账单"), 1600);
     }
   }
 
   return (
     <main className="app-shell">
+      {activeView === "ledger" && (
+        <WechatShare
+          title={`${currentTrip.title}分账清单`}
+          description={`查看${currentTrip.title}的出行费用和成员分账结果`}
+          link={getTripShareUrl(currentTrip.id)}
+          imageUrl={shareImage}
+          signatureEndpoint={wechatSignatureUrl}
+          priority={1}
+        />
+      )}
       <section className={`topbar ${activeView === "ledger" ? "ledger-topbar" : ""}`} aria-label="应用标题">
         <div>
           {activeView !== "ledger" && <p className="eyebrow">Trip Ledger</p>}
@@ -435,6 +447,9 @@ export default function Home() {
           <div className="trip-switcher">
             <button type="button" className="ghost-button" onClick={() => setActiveView("trips")}>
               返回出行管理
+            </button>
+            <button type="button" className="ghost-button" onClick={shareCurrentTrip}>
+              {shareState}
             </button>
             <select
               value={currentTrip.id}
@@ -648,16 +663,21 @@ export default function Home() {
 
 	          {ledgerTab === "shared" && (
 	            <section className="content-grid">
-	              <Panel title="公共费用清单" kicker={`${currentTrip.sharedExpenses.length} 项`}>
+	              <Panel title="公共费用清单" kicker={`${filteredSharedExpenses.length}/${currentTrip.sharedExpenses.length} 项`}>
 	                <div className="list-toolbar">
 	                  <span>成员付款会自动抵扣最终应付</span>
 	                  <button type="button" onClick={() => setEntryForm("shared")}>
 	                    新增公费
 	                  </button>
 	                </div>
+	                <CategoryFilter
+	                  categories={sharedCategoryOptions}
+	                  activeFilter={sharedCategoryFilter}
+	                  onFilter={setSharedCategoryFilter}
+	                />
 	                <ExpenseList
 	                  trip={currentTrip}
-	                  items={currentTrip.sharedExpenses}
+	                  items={filteredSharedExpenses}
 	                  onDelete={(id) => deleteItem("sharedExpenses", id)}
 	                />
 	              </Panel>
@@ -707,9 +727,6 @@ export default function Home() {
             <section className="content-grid settlement-grid">
               <Panel title="最终分账清单" kicker="成员费用">
                 <SettlementTable totals={totals.memberTotals} onOpen={openMemberDetail} />
-                <button className="copy-button" type="button" onClick={copySettlement}>
-                  {copyState}
-                </button>
               </Panel>
 
 	              <Panel title="小组合计" kicker="组合计算">
@@ -735,8 +752,15 @@ export default function Home() {
                 </div>
               </Panel>
 
-	              <Panel title="分项统计" kicker="当前账单">
-	                <CategoryChart items={tripCategoryTotals} variant="donut" emptyText="暂无公共费用类别金额" />
+	              <Panel
+	                title="分项统计"
+	                kicker={selectedGroupIds.length ? `${selectedGroupIds.length} 人组合` : "当前账单"}
+	              >
+	                <CategoryChart
+	                  items={selectedGroupIds.length ? selectedGroupCategoryTotals : tripCategoryTotals}
+	                  variant={selectedGroupIds.length ? "bars" : "donut"}
+	                  emptyText={selectedGroupIds.length ? "当前组合暂无费用" : "暂无公共费用类别金额"}
+	                />
 	              </Panel>
 	            </section>
 	          )}
@@ -990,6 +1014,23 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+function getTripShareUrl(tripId: string) {
+  if (typeof window === "undefined") return "";
+  const basePath = window.location.pathname.startsWith("/ledger") ? "/ledger" : "";
+  const url = new URL(`${basePath}/share`, window.location.origin);
+  url.searchParams.set("tripId", tripId);
+  return url.toString();
+}
+
+function isWechatBrowser() {
+  if (typeof window === "undefined") return false;
+  return /MicroMessenger/i.test(window.navigator.userAgent);
+}
+
+function normalizeSiteUrl(value: string) {
+  return value.endsWith("/") ? value : `${value}/`;
 }
 
 function Modal({
@@ -1373,6 +1414,35 @@ function ParticipantPicker({
         ))}
       </div>
       {members.length === 0 && <Empty text="先从人员库添加本次出行人员" />}
+    </div>
+  );
+}
+
+function CategoryFilter({
+  categories,
+  activeFilter,
+  onFilter,
+}: {
+  categories: string[];
+  activeFilter: string;
+  onFilter: (value: string) => void;
+}) {
+  if (categories.length === 0) return null;
+  return (
+    <div className="filter-row list-filter">
+      <button type="button" className={activeFilter === "全部" ? "active" : ""} onClick={() => onFilter("全部")}>
+        全部
+      </button>
+      {categories.map((category) => (
+        <button
+          type="button"
+          key={category}
+          className={activeFilter === category ? "active" : ""}
+          onClick={() => onFilter(category)}
+        >
+          {category}
+        </button>
+      ))}
     </div>
   );
 }

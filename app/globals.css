@@ -141,6 +141,7 @@ h1 {
 
 .trip-switcher {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -151,6 +152,7 @@ h1 {
 }
 
 .trip-switcher select {
+  flex: 1 1 180px;
   min-height: 38px;
 }
 
@@ -406,6 +408,10 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.list-filter {
+  margin: 0 0 10px;
+}
+
 .panel {
   min-width: 0;
   padding: 14px;
@@ -622,16 +628,20 @@ button:disabled {
   z-index: 30;
   display: grid;
   place-items: center;
-  overflow-y: auto;
+  overflow: hidden;
   background: rgba(20, 28, 25, 0.42);
   padding: 18px;
   backdrop-filter: blur(10px);
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 
 .modal-panel {
   width: min(680px, 100%);
   max-height: min(86vh, 760px);
   overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   border: 1px solid rgba(94, 72, 43, 0.2);
   border-radius: 8px;
   background: var(--panel-solid);
@@ -755,6 +765,10 @@ button:disabled {
   padding: 9px 10px;
 }
 
+.readonly-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .item-amount {
   display: flex;
   gap: 8px;
@@ -762,6 +776,24 @@ button:disabled {
   justify-content: flex-end;
   white-space: nowrap;
   text-align: right;
+}
+
+.share-shell {
+  padding-bottom: 42px;
+}
+
+.share-hero {
+  padding: 24px 0 16px;
+}
+
+.share-hero h1 {
+  font-size: clamp(1.8rem, 5vw, 3.2rem);
+}
+
+.share-stack {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
 }
 
 .roster-row {
@@ -1117,7 +1149,6 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .stats-grid,
   .home-console,
   .management-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1130,10 +1161,6 @@ button:disabled {
   .donut-chart {
     width: 158px;
     margin: 0 auto;
-  }
-
-  .selector-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1161,12 +1188,43 @@ button:disabled {
     text-align: left;
   }
 
-  .stats-grid,
-  .selector-grid,
   .home-console,
   .management-grid,
   .app-nav {
     grid-template-columns: 1fr;
+  }
+
+  .stats-grid,
+  .selector-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stat {
+    min-height: 60px;
+    padding: 8px 7px;
+  }
+
+  .stat span {
+    font-size: 0.72rem;
+  }
+
+  .stat strong {
+    margin-top: 5px;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+  }
+
+  .selector-grid label {
+    gap: 5px;
+    min-height: 34px;
+    padding: 0 6px;
+    font-size: 0.78rem;
+  }
+
+  .selector-grid input {
+    width: 14px;
+    min-height: 14px;
   }
 
   .ledger-tabs {

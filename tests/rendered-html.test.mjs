@@ -5,15 +5,22 @@ import test from "node:test";
 const templateRoot = new URL("../", import.meta.url);
 
 test("builds the trip ledger app", async () => {
-  const [layout, page, serverEntry, serverManifest] = await Promise.all([
+  const [layout, page, shareRoute, sharePage, serverEntry, serverManifest] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/share-viewer.tsx", import.meta.url), "utf8"),
     readFile(new URL("../dist/server/index.js", import.meta.url), "utf8"),
     readFile(new URL("../dist/server/vinext-server.json", import.meta.url), "utf8"),
   ]);
 
   assert.match(layout, /shareTitle = "旅行分账"/);
-  assert.match(layout, /WechatShare/);
+  assert.doesNotMatch(layout, /<WechatShare/);
+  assert.match(page, /WechatShare/);
+  assert.match(page, /window\.location\.href = shareUrl/);
+  assert.match(shareRoute, /generateMetadata/);
+  assert.match(shareRoute, /initialTrip/);
+  assert.match(sharePage, /WechatShare/);
   assert.match(page, /旅行分账工作台/);
   assert.match(page, /全局数据/);
   assert.match(page, /管理类/);

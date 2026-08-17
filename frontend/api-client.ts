@@ -1,8 +1,13 @@
-import type { AppState } from "./trip-types";
+import type { AppState, Trip } from "./trip-types";
 import { normalizeAppState } from "./trip-utils";
 
 type ApiStateResponse = {
   state?: unknown;
+  error?: string;
+};
+
+type ApiTripResponse = {
+  trip?: unknown;
   error?: string;
 };
 
@@ -26,6 +31,22 @@ export async function loadRemoteState(): Promise<AppState> {
   }
 
   return normalizeAppState(payload.state);
+}
+
+export async function loadRemoteTrip(tripId: string): Promise<Trip> {
+  const response = await fetch(`${getApiBaseUrl()}/api/trips/${encodeURIComponent(tripId)}`, {
+    headers: getApiHeaders(),
+  });
+  const payload = (await response.json()) as ApiTripResponse;
+
+  if (!response.ok) {
+    throw new ApiClientError(payload.error ?? "读取出行账单失败", response.status);
+  }
+
+  const state = normalizeAppState({ trips: payload.trip ? [payload.trip] : [] });
+  const trip = state.trips[0];
+  if (!trip) throw new ApiClientError("出行账单不存在", 404);
+  return trip;
 }
 
 export async function saveRemoteState(state: AppState): Promise<AppState> {

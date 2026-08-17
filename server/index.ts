@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { URL } from "node:url";
 import { readJson, sendJson, toApiError } from "./http/json";
-import { getLedgerState, getStorageHealth, saveLedgerState } from "./services/trip-ledger-service";
+import { getLedgerState, getLedgerTrip, getStorageHealth, saveLedgerState } from "./services/trip-ledger-service";
 
 const host = process.env.API_HOST ?? "127.0.0.1";
 const port = Number(process.env.API_PORT ?? 5174);
@@ -47,6 +47,17 @@ const server = createServer(async (request, response) => {
 
     if (apiPath === "/api/state" && request.method === "GET") {
       sendJson(response, 200, { state: await getLedgerState() });
+      return;
+    }
+
+    const tripMatch = apiPath.match(/^\/api\/trips\/([^/]+)$/);
+    if (tripMatch && request.method === "GET") {
+      const trip = await getLedgerTrip(decodeURIComponent(tripMatch[1]));
+      if (!trip) {
+        sendJson(response, 404, { error: "出行账单不存在" });
+        return;
+      }
+      sendJson(response, 200, { trip });
       return;
     }
 

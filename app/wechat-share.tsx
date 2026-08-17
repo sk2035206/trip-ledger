@@ -8,6 +8,7 @@ type WechatShareProps = {
   link: string;
   imageUrl: string;
   signatureEndpoint: string;
+  priority?: number;
 };
 
 type WechatSignature = {
@@ -48,6 +49,9 @@ declare global {
 }
 
 const wechatSdkUrl = "https://res.wx.qq.com/open/js/jweixin-1.6.0.js";
+let activeSharePriority = 0;
+let shareSequence = 0;
+let isWechatConfigured = false;
 
 export function WechatShare({
   title,
@@ -55,16 +59,26 @@ export function WechatShare({
   link,
   imageUrl,
   signatureEndpoint,
+  priority = 0,
 }: WechatShareProps) {
   useEffect(() => {
     if (!isWechatBrowser()) return;
+    if (priority < activeSharePriority) return;
+    activeSharePriority = priority;
 
     let cancelled = false;
+    const sequence = ++shareSequence;
 
     async function setupWechatShare() {
       try {
         await loadWechatSdk();
-        if (cancelled || !window.wx) return;
+        if (cancelled || !window.wx || sequence !== shareSequence) return;
+
+        const shareData = createShareData({ title, description, link, imageUrl });
+        if (isWechatConfigured) {
+          applyWechatShareData(shareData);
+          return;
+        }
 
         const currentUrl = window.location.href.split("#")[0];
         const signatureUrl = `${signatureEndpoint}?url=${encodeURIComponent(currentUrl)}`;
@@ -73,7 +87,7 @@ export function WechatShare({
           return response.json() as Promise<WechatSignature>;
         });
 
-        if (cancelled || !window.wx) return;
+        if (cancelled || !window.wx || sequence !== shareSequence) return;
 
         window.wx.config({
           debug: false,
@@ -85,22 +99,10 @@ export function WechatShare({
         });
 
         window.wx.ready(() => {
-          const appMessage = {
-            title,
-            desc: description,
-            link,
-            imgUrl: imageUrl,
-          };
-          const timeline = {
-            title,
-            link,
-            imgUrl: imageUrl,
-          };
-
-          window.wx?.updateAppMessageShareData?.(appMessage);
-          window.wx?.updateTimelineShareData?.(timeline);
-          window.wx?.onMenuShareAppMessage?.(appMessage);
-          window.wx?.onMenuShareTimeline?.(timeline);
+          if (cancelled || sequence !== shareSequence) return;
+          isWechatConfigured = true;
+          applyWechatShareData(shareData);
+          console.info("[trip-ledger] 微信分享已配置", shareData.appMessage.link);
         });
 
         window.wx.error((error) => {
@@ -116,9 +118,43 @@ export function WechatShare({
     return () => {
       cancelled = true;
     };
-  }, [description, imageUrl, link, signatureEndpoint, title]);
+  }, [description, imageUrl, link, priority, signatureEndpoint, title]);
 
   return null;
+}
+
+function createShareData({
+  title,
+  description,
+  link,
+  imageUrl,
+}: {
+  title: string;
+  description: string;
+  link: string;
+  imageUrl: string;
+}) {
+  return {
+    appMessage: {
+      title,
+      desc: description,
+      link,
+      imgUrl: imageUrl,
+    },
+    timeline: {
+      title,
+      link,
+      imgUrl: imageUrl,
+    },
+  };
+}
+
+function applyWechatShareData(shareData: ReturnType<typeof createShareData>) {
+  window.wx?.updateAppMessageShareData?.(shareData.appMessage);
+  window.wx?.updateTimelineShareData?.(shareData.timeline);
+  window.wx?.onMenuShareAppMessage?.(shareData.appMessage);
+  window.wx?.onMenuShareTimeline?.(shareData.timeline);
+  console.info("[trip-ledger] 微信分享已更新", shareData.appMessage.link);
 }
 
 function isWechatBrowser() {

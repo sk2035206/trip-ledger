@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { WechatShare } from "./wechat-share";
 import "./globals.css";
 
 const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "https://jcxxy.cn/ledger/");
 const shareTitle = "旅行分账";
 const shareDescription = "用于多人旅行公共费用、出行费用、个人费用和成员自付扣减核算的 H5 分账工具。";
 const shareImage = new URL("/api/share-card.png", siteUrl).toString();
-const wechatSignatureUrl =
-  process.env.NEXT_PUBLIC_WECHAT_SIGNATURE_URL ?? "https://jcxxy.cn/gzh/api/wechat/signature";
 
 function normalizeSiteUrl(value: string) {
   return value.endsWith("/") ? value : `${value}/`;
@@ -66,13 +63,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <WechatShare
-          title={shareTitle}
-          description={shareDescription}
-          link={siteUrl}
-          imageUrl={shareImage}
-          signatureEndpoint={wechatSignatureUrl}
-        />
         {children}
       </body>
     </html>

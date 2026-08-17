@@ -20,6 +20,11 @@ export async function getLedgerState() {
   return readAppState();
 }
 
+export async function getLedgerTrip(tripId: string) {
+  const state = await readAppState();
+  return state.trips.find((trip) => trip.id === tripId) ?? null;
+}
+
 export async function saveLedgerState(state: unknown) {
   return writeAppState(state);
 }
