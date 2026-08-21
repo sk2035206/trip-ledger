@@ -176,7 +176,7 @@ export function ShareViewer({ tripId, initialTrip }: { tripId: string; initialTr
                 </div>
                 <div className="stat">
                   <span>已付款</span>
-                  <strong>{formatMoney(totals.paidTotal + Math.abs(totals.adjustmentTotal))}</strong>
+                  <strong>{formatMoney(totals.paidTotal)}</strong>
                 </div>
                 <div className="stat">
                   <span>成员数</span>
@@ -312,7 +312,7 @@ function ReadonlySettlement({ totals, onOpen }: { totals: MemberTotal[]; onOpen:
           <span>{formatMoney(item.travel)}</span>
           <span>{formatMoney(item.shared)}</span>
           <span>{formatMoney(item.personal)}</span>
-          <span>{formatMoney(item.adjustment - item.paid)}</span>
+          <span>{formatMoney(-item.paid)}</span>
         </button>
       ))}
     </div>

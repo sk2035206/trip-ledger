@@ -33,14 +33,6 @@ export type PersonalExpense = {
   note?: string;
 };
 
-export type Adjustment = {
-  id: string;
-  memberId: string;
-  title: string;
-  amount: number;
-  note?: string;
-};
-
 export type Trip = {
   id: string;
   title: string;
@@ -49,7 +41,6 @@ export type Trip = {
   sharedExpenses: SharedExpense[];
   travelCosts: TravelCost[];
   personalExpenses: PersonalExpense[];
-  adjustments: Adjustment[];
 };
 
 export type AppState = {
@@ -63,7 +54,6 @@ export type MemberTotal = {
   shared: number;
   travel: number;
   personal: number;
-  adjustment: number;
   paid: number;
   total: number;
 };

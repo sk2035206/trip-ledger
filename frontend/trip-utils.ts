@@ -1,4 +1,5 @@
 import { defaultCategories, defaultState } from "./sample-data";
+import { pinyin } from "pinyin-pro";
 import type { AppState, LedgerLine, MemberTotal, Person, Trip } from "./trip-types";
 
 export function formatMoney(value: number) {
@@ -8,6 +9,47 @@ export function formatMoney(value: number) {
 
 export function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function createReadableId(value: string, usedIds: Iterable<string>) {
+  const base = toPinyinSlug(value) || "item";
+  const occupied = new Set(Array.from(usedIds, (id) => id.toLowerCase()));
+  let candidate = base;
+  let suffix = 2;
+
+  while (occupied.has(candidate.toLowerCase())) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+export function toPinyinSlug(value: string) {
+  const source = value
+    .trim()
+    .replace(/([0-9A-Za-z])([\u3400-\u9fff])/g, "$1-$2")
+    .replace(/([\u3400-\u9fff])([0-9A-Za-z])/g, "$1-$2");
+
+  return source
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map((segment) =>
+      Array.from(segment)
+        .map((character, index) =>
+          pinyin(character, {
+            pattern: index === 0 ? "pinyin" : "first",
+            toneType: "none",
+            separator: "",
+          }),
+        )
+        .join(""),
+    )
+    .join("-")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export function splitAmount(amount: number, count: number) {
@@ -53,7 +95,9 @@ export function migrateTripsToState(
       .filter((person): person is Person => Boolean(person));
 
     return {
-      ...trip,
+      id: trip.id,
+      title: trip.title,
+      dates: trip.dates,
       members: tripMembers,
       sharedExpenses: trip.sharedExpenses.map((item) => ({
         ...item,
@@ -65,10 +109,6 @@ export function migrateTripsToState(
         participantIds: replaceIds(item.participantIds, idMap),
       })),
       personalExpenses: trip.personalExpenses.map((item) => ({
-        ...item,
-        memberId: idMap.get(item.memberId) ?? item.memberId,
-      })),
-      adjustments: trip.adjustments.map((item) => ({
         ...item,
         memberId: idMap.get(item.memberId) ?? item.memberId,
       })),
@@ -115,18 +155,13 @@ export function calculateTrip(trip: Trip) {
     const personal = trip.personalExpenses
       .filter((item) => item.memberId === member.id)
       .reduce((sum, item) => sum + item.amount, 0);
-    const adjustment = trip.adjustments
-      .filter((item) => item.memberId === member.id)
-      .reduce((sum, item) => sum + item.amount, 0);
-
     return {
       member,
       shared,
       travel: travelTotal,
       personal,
-      adjustment,
       paid,
-      total: shared + travelTotal + personal + adjustment - paid,
+      total: shared + travelTotal + personal - paid,
     };
   });
 
@@ -134,7 +169,6 @@ export function calculateTrip(trip: Trip) {
   const paidTotal = trip.sharedExpenses.reduce((sum, item) => sum + (item.payerId ? item.amount : 0), 0);
   const travelTotal = trip.travelCosts.reduce((sum, item) => sum + item.amount, 0);
   const personalTotal = trip.personalExpenses.reduce((sum, item) => sum + item.amount, 0);
-  const adjustmentTotal = trip.adjustments.reduce((sum, item) => sum + item.amount, 0);
   const expenseTotal = sharedTotal + travelTotal + personalTotal;
   const payableTotal = memberTotals.reduce((sum, item) => sum + item.total, 0);
 
@@ -143,7 +177,6 @@ export function calculateTrip(trip: Trip) {
     sharedTotal,
     travelTotal,
     personalTotal,
-    adjustmentTotal,
     paidTotal,
     expenseTotal,
     finalTotal: expenseTotal,
@@ -162,7 +195,6 @@ export function calculateGlobal(state: AppState) {
         sharedTotal: acc.sharedTotal + total.sharedTotal,
         travelTotal: acc.travelTotal + total.travelTotal,
         personalTotal: acc.personalTotal + total.personalTotal,
-        adjustmentTotal: acc.adjustmentTotal + total.adjustmentTotal,
         paidTotal: acc.paidTotal + total.paidTotal,
         finalTotal: acc.finalTotal + total.expenseTotal,
         payableTotal: acc.payableTotal + total.payableTotal,
@@ -174,7 +206,6 @@ export function calculateGlobal(state: AppState) {
       sharedTotal: 0,
       travelTotal: 0,
       personalTotal: 0,
-      adjustmentTotal: 0,
       paidTotal: 0,
       finalTotal: 0,
       payableTotal: 0,
@@ -262,17 +293,6 @@ export function getMemberLedgerItems(trip: Trip, memberId: string): LedgerLine[]
       amount: item.amount,
       note: item.note,
     }));
-  const adjustments = trip.adjustments
-    .filter((item) => item.memberId === memberId)
-    .map<LedgerLine>((item) => ({
-      id: item.id,
-      title: item.title,
-      type: "自付",
-      category: "自付",
-      sourceAmount: item.amount,
-      amount: item.amount,
-      note: item.note,
-    }));
   const paid = trip.sharedExpenses
     .filter((item) => item.payerId === memberId)
     .map<LedgerLine>((item) => ({
@@ -284,7 +304,7 @@ export function getMemberLedgerItems(trip: Trip, memberId: string): LedgerLine[]
       amount: -item.amount,
       note: "公共费用付款人扣减",
     }));
-  return [...shared, ...travelLines, ...personal, ...adjustments, ...paid];
+  return [...shared, ...travelLines, ...personal, ...paid];
 }
 
 export function getMemberCategoryTotals(items: LedgerLine[]) {
@@ -306,7 +326,6 @@ export function removeTripMember(trip: Trip, memberId: string): Trip {
       participantIds: item.participantIds.filter((id) => id !== memberId),
     })),
     personalExpenses: trip.personalExpenses.filter((item) => item.memberId !== memberId),
-    adjustments: trip.adjustments.filter((item) => item.memberId !== memberId),
   };
 }
 

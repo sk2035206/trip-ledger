@@ -1,11 +1,7 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { defaultState } from "../../frontend/sample-data";
 import type { AppState, Person, Trip } from "../../frontend/trip-types";
 import { normalizeAppState } from "../../frontend/trip-utils";
 import { getMysqlPool } from "./pool";
-
-const STATE_ID = "default";
-const MIGRATION_LOCK_NAME = "trip_ledger_state_migration";
 
 export const businessTables = [
   "people",
@@ -17,7 +13,6 @@ export const businessTables = [
   "travel_costs",
   "travel_cost_participants",
   "personal_expenses",
-  "adjustments",
 ] as const;
 
 type BusinessTable = (typeof businessTables)[number];
@@ -32,14 +27,6 @@ type QueryValues = string | number | bigint | boolean | Date | null | undefined 
 
 type CountRow = RowDataPacket & {
   count: number | string;
-};
-
-type LegacyStateRow = RowDataPacket & {
-  payload: string | AppState;
-};
-
-type LockRow = RowDataPacket & {
-  acquired: number | string | null;
 };
 
 type ConstraintRow = RowDataPacket & {
@@ -101,15 +88,6 @@ type PersonalExpenseRow = RowDataPacket & {
   note: string | null;
 };
 
-type AdjustmentRow = RowDataPacket & {
-  id: string;
-  trip_id: string;
-  person_id: string;
-  title: string;
-  amount: number | string;
-  note: string | null;
-};
-
 type ParticipantRow = RowDataPacket & {
   record_id: string;
   person_id: string;
@@ -118,14 +96,6 @@ type ParticipantRow = RowDataPacket & {
 let schemaPromise: Promise<void> | null = null;
 
 const schemaStatements = [
-  `
-    CREATE TABLE IF NOT EXISTS trip_ledger_state (
-      id VARCHAR(32) NOT NULL PRIMARY KEY COMMENT '状态快照ID，固定为default',
-      payload JSON NOT NULL COMMENT '旧版本整包账本JSON，仅用于迁移到业务分表',
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='历史账本状态快照表，仅作为旧数据迁移来源'
-  `,
   `
     CREATE TABLE IF NOT EXISTS people (
       id VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '人员ID',
@@ -183,8 +153,12 @@ const schemaStatements = [
   `
     CREATE TABLE IF NOT EXISTS shared_expense_participants (
       expense_id VARCHAR(96) NOT NULL COMMENT '公共费用ID',
+      trip_id VARCHAR(64) NOT NULL COMMENT '出行账本ID，冗余便于按账单查询',
       person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID',
+      title VARCHAR(200) NOT NULL COMMENT '公共费用事项名称冗余字段',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
       PRIMARY KEY (expense_id, person_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公共费用参与分摊人员表'
   `,
@@ -204,6 +178,7 @@ const schemaStatements = [
     CREATE TABLE IF NOT EXISTS travel_cost_participants (
       travel_cost_id VARCHAR(96) NOT NULL COMMENT '出行费用ID',
       person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID',
+      title VARCHAR(200) NOT NULL COMMENT '出行费用事项名称冗余字段',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
       PRIMARY KEY (travel_cost_id, person_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出行费用参与分摊人员表'
@@ -222,19 +197,6 @@ const schemaStatements = [
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='个人费用明细表'
   `,
-  `
-    CREATE TABLE IF NOT EXISTS adjustments (
-      id VARCHAR(96) NOT NULL PRIMARY KEY COMMENT '自付记录ID',
-      trip_id VARCHAR(64) NOT NULL COMMENT '出行账本ID',
-      person_id VARCHAR(64) NOT NULL COMMENT '自付人员ID',
-      title VARCHAR(200) NOT NULL COMMENT '自付事项名称',
-      amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '自付扣减金额，通常为负数',
-      note TEXT NULL COMMENT '备注',
-      sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='成员自付扣减记录表'
-  `,
 ];
 
 const relationshipForeignKeys = [
@@ -249,8 +211,6 @@ const relationshipForeignKeys = [
   { table: "travel_cost_participants", name: "fk_travel_cost_participants_person" },
   { table: "personal_expenses", name: "fk_personal_expenses_trip" },
   { table: "personal_expenses", name: "fk_personal_expenses_person" },
-  { table: "adjustments", name: "fk_adjustments_trip" },
-  { table: "adjustments", name: "fk_adjustments_person" },
 ] as const;
 
 const relationshipIndexes = [
@@ -263,16 +223,9 @@ const relationshipIndexes = [
   { table: "travel_cost_participants", name: "idx_travel_cost_participants_person" },
   { table: "personal_expenses", name: "idx_personal_expenses_trip" },
   { table: "personal_expenses", name: "idx_personal_expenses_person" },
-  { table: "adjustments", name: "idx_adjustments_trip" },
-  { table: "adjustments", name: "idx_adjustments_person" },
 ] as const;
 
 const schemaCommentStatements = [
-  "ALTER TABLE trip_ledger_state COMMENT = '历史账本状态快照表，仅作为旧数据迁移来源'",
-  "ALTER TABLE trip_ledger_state MODIFY id VARCHAR(32) NOT NULL COMMENT '状态快照ID，固定为default'",
-  "ALTER TABLE trip_ledger_state MODIFY payload JSON NOT NULL COMMENT '旧版本整包账本JSON，仅用于迁移到业务分表'",
-  "ALTER TABLE trip_ledger_state MODIFY created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'",
-  "ALTER TABLE trip_ledger_state MODIFY updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'",
   "ALTER TABLE people COMMENT = '全局人员库'",
   "ALTER TABLE people MODIFY id VARCHAR(64) NOT NULL COMMENT '人员ID'",
   "ALTER TABLE people MODIFY name VARCHAR(120) NOT NULL COMMENT '人员姓名'",
@@ -311,8 +264,12 @@ const schemaCommentStatements = [
   "ALTER TABLE shared_expenses MODIFY updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'",
   "ALTER TABLE shared_expense_participants COMMENT = '公共费用参与分摊人员表'",
   "ALTER TABLE shared_expense_participants MODIFY expense_id VARCHAR(96) NOT NULL COMMENT '公共费用ID'",
+  "ALTER TABLE shared_expense_participants MODIFY trip_id VARCHAR(64) NOT NULL COMMENT '出行账本ID，冗余便于按账单查询'",
   "ALTER TABLE shared_expense_participants MODIFY person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID'",
+  "ALTER TABLE shared_expense_participants MODIFY title VARCHAR(200) NOT NULL COMMENT '公共费用事项名称冗余字段'",
   "ALTER TABLE shared_expense_participants MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值'",
+  "ALTER TABLE shared_expense_participants MODIFY created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'",
+  "ALTER TABLE shared_expense_participants MODIFY updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'",
   "ALTER TABLE travel_costs COMMENT = '出行费用明细表'",
   "ALTER TABLE travel_costs MODIFY id VARCHAR(96) NOT NULL COMMENT '出行费用ID'",
   "ALTER TABLE travel_costs MODIFY trip_id VARCHAR(64) NOT NULL COMMENT '出行账本ID'",
@@ -325,6 +282,7 @@ const schemaCommentStatements = [
   "ALTER TABLE travel_cost_participants COMMENT = '出行费用参与分摊人员表'",
   "ALTER TABLE travel_cost_participants MODIFY travel_cost_id VARCHAR(96) NOT NULL COMMENT '出行费用ID'",
   "ALTER TABLE travel_cost_participants MODIFY person_id VARCHAR(64) NOT NULL COMMENT '参与分摊人员ID'",
+  "ALTER TABLE travel_cost_participants MODIFY title VARCHAR(200) NOT NULL COMMENT '出行费用事项名称冗余字段'",
   "ALTER TABLE travel_cost_participants MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值'",
   "ALTER TABLE personal_expenses COMMENT = '个人费用明细表'",
   "ALTER TABLE personal_expenses MODIFY id VARCHAR(96) NOT NULL COMMENT '个人费用ID'",
@@ -337,16 +295,6 @@ const schemaCommentStatements = [
   "ALTER TABLE personal_expenses MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值'",
   "ALTER TABLE personal_expenses MODIFY created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'",
   "ALTER TABLE personal_expenses MODIFY updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'",
-  "ALTER TABLE adjustments COMMENT = '成员自付扣减记录表'",
-  "ALTER TABLE adjustments MODIFY id VARCHAR(96) NOT NULL COMMENT '自付记录ID'",
-  "ALTER TABLE adjustments MODIFY trip_id VARCHAR(64) NOT NULL COMMENT '出行账本ID'",
-  "ALTER TABLE adjustments MODIFY person_id VARCHAR(64) NOT NULL COMMENT '自付人员ID'",
-  "ALTER TABLE adjustments MODIFY title VARCHAR(200) NOT NULL COMMENT '自付事项名称'",
-  "ALTER TABLE adjustments MODIFY amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '自付扣减金额，通常为负数'",
-  "ALTER TABLE adjustments MODIFY note TEXT NULL COMMENT '备注'",
-  "ALTER TABLE adjustments MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值'",
-  "ALTER TABLE adjustments MODIFY created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'",
-  "ALTER TABLE adjustments MODIFY updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'",
 ];
 
 export async function ensureSchema() {
@@ -364,10 +312,87 @@ async function initializeSchema() {
     await db.execute(statement);
   }
   await ensureSharedExpensePayerColumn(db);
+  await ensureParticipantTitleColumns(db);
+  await ensureSharedParticipantMetadataColumns(db);
+  await db.execute("DROP TABLE IF EXISTS adjustments");
   await removeRelationshipConstraints(db);
   for (const statement of schemaCommentStatements) {
     await db.execute(statement);
   }
+}
+
+async function ensureSharedParticipantMetadataColumns(db: Pool) {
+  if (!(await columnExists(db, "shared_expense_participants", "trip_id"))) {
+    await db.execute(
+      "ALTER TABLE shared_expense_participants ADD COLUMN trip_id VARCHAR(64) NULL COMMENT '出行账本ID，冗余便于按账单查询' AFTER expense_id",
+    );
+  }
+  await db.execute(
+    `UPDATE shared_expense_participants participant
+     INNER JOIN shared_expenses expense ON expense.id = participant.expense_id
+     SET participant.trip_id = expense.trip_id
+     WHERE participant.trip_id IS NULL OR participant.trip_id = ''`,
+  );
+  await db.execute(
+    "UPDATE shared_expense_participants SET trip_id = 'unknown' WHERE trip_id IS NULL OR trip_id = ''",
+  );
+
+  if (!(await columnExists(db, "shared_expense_participants", "created_at"))) {
+    await db.execute(
+      "ALTER TABLE shared_expense_participants ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间' AFTER sort_order",
+    );
+  }
+  if (!(await columnExists(db, "shared_expense_participants", "updated_at"))) {
+    await db.execute(
+      "ALTER TABLE shared_expense_participants ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间' AFTER created_at",
+    );
+  }
+}
+
+async function columnExists(db: Pool, table: string, column: string) {
+  const [rows] = await db.query<Array<RowDataPacket & { count: number | string }>>(
+    `
+      SELECT COUNT(*) AS count
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?
+    `,
+    [table, column],
+  );
+  return Number(rows[0]?.count ?? 0) > 0;
+}
+
+async function ensureParticipantTitleColumns(db: Pool) {
+  await ensureParticipantTitleColumn(db, "shared_expense_participants", "expense_id", "shared_expenses", "未命名费用");
+  await ensureParticipantTitleColumn(db, "travel_cost_participants", "travel_cost_id", "travel_costs", "未命名出行费用");
+}
+
+async function ensureParticipantTitleColumn(
+  db: Pool,
+  participantTable: string,
+  recordIdColumn: string,
+  sourceTable: string,
+  fallbackTitle: string,
+) {
+  const [rows] = await db.query<Array<RowDataPacket & { count: number | string }>>(
+    `
+      SELECT COUNT(*) AS count
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = 'title'
+    `,
+    [participantTable],
+  );
+  if (Number(rows[0]?.count ?? 0) === 0) {
+    await db.execute(`ALTER TABLE ${participantTable} ADD COLUMN title VARCHAR(200) NULL COMMENT '事项名称冗余字段' AFTER person_id`);
+  }
+
+  await db.execute(
+    `UPDATE ${participantTable} participant INNER JOIN ${sourceTable} source ON source.id = participant.${recordIdColumn} SET participant.title = source.title WHERE participant.title IS NULL OR participant.title = ''`,
+  );
+  await db.execute(`UPDATE ${participantTable} SET title = ? WHERE title IS NULL OR title = ''`, [fallbackTitle]);
 }
 
 async function ensureSharedExpensePayerColumn(db: Pool) {
@@ -436,57 +461,17 @@ async function indexExists(db: Pool, table: string, name: string) {
 
 export async function getBusinessTableStats(): Promise<TableStat[]> {
   await ensureSchema();
-  await importLegacyStateIfNeeded();
   return countBusinessRows(getMysqlPool());
 }
 
 export async function readAppState(): Promise<AppState> {
   await ensureSchema();
-  await importLegacyStateIfNeeded();
   return readStateFromTables(getMysqlPool());
 }
 
 export async function writeAppState(state: unknown): Promise<AppState> {
   await ensureSchema();
   return replaceState(normalizeAppState(state));
-}
-
-async function importLegacyStateIfNeeded() {
-  const db = getMysqlPool();
-  const hasBusinessRows = (await countBusinessRows(db)).some((stat) => stat.rows > 0);
-  if (hasBusinessRows) return;
-
-  const connection = await db.getConnection();
-  let lockAcquired = false;
-
-  try {
-    const lockRows = await queryRows<LockRow>(connection, "SELECT GET_LOCK(?, 10) AS acquired", [
-      MIGRATION_LOCK_NAME,
-    ]);
-    lockAcquired = Number(lockRows[0]?.acquired ?? 0) === 1;
-    if (!lockAcquired) throw new Error("获取历史数据迁移锁超时，请稍后重试。");
-
-    const hasRowsAfterLock = (await countBusinessRows(connection)).some((stat) => stat.rows > 0);
-    if (hasRowsAfterLock) return;
-
-    const legacyState = await readLegacyState(connection);
-    await replaceStateWithConnection(connection, legacyState ?? defaultState);
-  } finally {
-    if (lockAcquired) await connection.query("SELECT RELEASE_LOCK(?)", [MIGRATION_LOCK_NAME]);
-    connection.release();
-  }
-}
-
-async function readLegacyState(db: Queryable) {
-  const rows = await queryRows<LegacyStateRow>(
-    db,
-    "SELECT payload FROM trip_ledger_state WHERE id = ? LIMIT 1",
-    [STATE_ID],
-  );
-  if (!rows.length) return null;
-
-  const payload = typeof rows[0].payload === "string" ? JSON.parse(rows[0].payload) : rows[0].payload;
-  return normalizeAppState(payload);
 }
 
 async function replaceState(state: AppState): Promise<AppState> {
@@ -504,8 +489,7 @@ async function replaceStateWithConnection(connection: PoolConnection, state: App
 
   try {
     await connection.beginTransaction();
-    await clearBusinessTables(connection);
-    await insertState(connection, normalized);
+    await syncState(connection, normalized);
     await connection.commit();
     return normalized;
   } catch (error) {
@@ -525,7 +509,6 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
     travelCostRows,
     travelParticipantRows,
     personalExpenseRows,
-    adjustmentRows,
   ] = await Promise.all([
     queryRows<PersonRow>(db, "SELECT id, name, note FROM people ORDER BY sort_order, created_at, id"),
     queryRows<CategoryRow>(db, "SELECT name FROM categories ORDER BY sort_order, name"),
@@ -579,14 +562,6 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
         ORDER BY trip_id, sort_order, created_at, id
       `,
     ),
-    queryRows<AdjustmentRow>(
-      db,
-      `
-        SELECT id, trip_id, person_id, title, amount, note
-        FROM adjustments
-        ORDER BY trip_id, sort_order, created_at, id
-      `,
-    ),
   ]);
 
   const trips: Trip[] = tripRows.map((trip) => ({
@@ -597,7 +572,6 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
     sharedExpenses: [],
     travelCosts: [],
     personalExpenses: [],
-    adjustments: [],
   }));
   const tripById = new Map(trips.map((trip) => [trip.id, trip]));
   const sharedParticipants = groupParticipants(sharedParticipantRows);
@@ -648,18 +622,6 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
     });
   });
 
-  adjustmentRows.forEach((row) => {
-    const trip = tripById.get(row.trip_id);
-    if (!trip) return;
-    trip.adjustments.push({
-      id: row.id,
-      memberId: row.person_id,
-      title: row.title,
-      amount: toNumber(row.amount),
-      note: row.note ?? undefined,
-    });
-  });
-
   return normalizeAppState({
     people: peopleRows.map((person) => ({
       id: person.id,
@@ -671,42 +633,26 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
   });
 }
 
-async function clearBusinessTables(connection: PoolConnection) {
-  const clearOrder = [
-    "shared_expense_participants",
-    "travel_cost_participants",
-    "adjustments",
-    "personal_expenses",
-    "travel_costs",
-    "shared_expenses",
-    "trip_members",
-    "trips",
-    "categories",
-    "people",
-  ];
-
-  for (const table of clearOrder) {
-    await connection.query(`DELETE FROM ${table}`);
-  }
-}
-
-async function insertState(connection: PoolConnection, state: AppState) {
+async function syncState(connection: PoolConnection, state: AppState) {
   const people = collectPeople(state);
   const categories = collectCategories(state);
 
   await bulkInsert(
     connection,
-    "INSERT INTO people (id, name, note, sort_order) VALUES ?",
+    `INSERT INTO people (id, name, note, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE name = VALUES(name), note = VALUES(note), sort_order = VALUES(sort_order)`,
     people.map((person, index) => [person.id, normalizedTitle(person.name, "未命名人员"), nullableText(person.note), index]),
   );
   await bulkInsert(
     connection,
-    "INSERT INTO categories (name, sort_order) VALUES ?",
+    `INSERT INTO categories (name, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)`,
     categories.map((category, index) => [category, index]),
   );
   await bulkInsert(
     connection,
-    "INSERT INTO trips (id, title, dates, sort_order) VALUES ?",
+    `INSERT INTO trips (id, title, dates, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE title = VALUES(title), dates = VALUES(dates), sort_order = VALUES(sort_order)`,
     state.trips.map((trip, index) => [
       trip.id,
       normalizedTitle(trip.title, "未命名出行"),
@@ -721,7 +667,6 @@ async function insertState(connection: PoolConnection, state: AppState) {
   const travelRows: unknown[][] = [];
   const travelParticipantRows: unknown[][] = [];
   const personalRows: unknown[][] = [];
-  const adjustmentRows: unknown[][] = [];
   const peopleIds = new Set(people.map((person) => person.id));
 
   state.trips.forEach((trip) => {
@@ -744,7 +689,13 @@ async function insertState(connection: PoolConnection, state: AppState) {
         index,
       ]);
       filterParticipants(expense.participantIds, memberIds).forEach((personId, participantIndex) => {
-        sharedParticipantRows.push([expense.id, personId, participantIndex]);
+        sharedParticipantRows.push([
+          expense.id,
+          trip.id,
+          personId,
+          normalizedTitle(expense.title, "未命名费用"),
+          participantIndex,
+        ]);
       });
     });
 
@@ -758,7 +709,7 @@ async function insertState(connection: PoolConnection, state: AppState) {
         index,
       ]);
       filterParticipants(cost.participantIds, memberIds).forEach((personId, participantIndex) => {
-        travelParticipantRows.push([cost.id, personId, participantIndex]);
+        travelParticipantRows.push([cost.id, personId, normalizedTitle(cost.title, "未命名出行费用"), participantIndex]);
       });
     });
 
@@ -776,43 +727,50 @@ async function insertState(connection: PoolConnection, state: AppState) {
       ]);
     });
 
-    trip.adjustments.forEach((adjustment, index) => {
-      if (!memberIds.has(adjustment.memberId)) return;
-      adjustmentRows.push([
-        adjustment.id,
-        trip.id,
-        adjustment.memberId,
-        normalizedTitle(adjustment.title, "未命名自付"),
-        adjustment.amount,
-        nullableText(adjustment.note),
-        index,
-      ]);
-    });
   });
 
-  await bulkInsert(connection, "INSERT INTO trip_members (trip_id, person_id, sort_order) VALUES ?", tripMemberRows);
+  await bulkInsert(
+    connection,
+    `INSERT INTO trip_members (trip_id, person_id, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)`,
+    tripMemberRows,
+  );
   await bulkInsert(
     connection,
     `
       INSERT INTO shared_expenses
         (id, trip_id, title, category_name, amount, payer_person_id, note, sort_order)
       VALUES ?
+      ON DUPLICATE KEY UPDATE
+        trip_id = VALUES(trip_id),
+        title = VALUES(title),
+        category_name = VALUES(category_name),
+        amount = VALUES(amount),
+        payer_person_id = VALUES(payer_person_id),
+        note = VALUES(note),
+        sort_order = VALUES(sort_order)
     `,
     sharedRows,
   );
   await bulkInsert(
     connection,
-    "INSERT INTO shared_expense_participants (expense_id, person_id, sort_order) VALUES ?",
+    `INSERT INTO shared_expense_participants (expense_id, trip_id, person_id, title, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE
+       trip_id = VALUES(trip_id), title = VALUES(title), sort_order = VALUES(sort_order)`,
     sharedParticipantRows,
   );
   await bulkInsert(
     connection,
-    "INSERT INTO travel_costs (id, trip_id, title, amount, note, sort_order) VALUES ?",
+    `INSERT INTO travel_costs (id, trip_id, title, amount, note, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE
+       trip_id = VALUES(trip_id), title = VALUES(title), amount = VALUES(amount),
+       note = VALUES(note), sort_order = VALUES(sort_order)`,
     travelRows,
   );
   await bulkInsert(
     connection,
-    "INSERT INTO travel_cost_participants (travel_cost_id, person_id, sort_order) VALUES ?",
+    `INSERT INTO travel_cost_participants (travel_cost_id, person_id, title, sort_order) VALUES ?
+     ON DUPLICATE KEY UPDATE title = VALUES(title), sort_order = VALUES(sort_order)`,
     travelParticipantRows,
   );
   await bulkInsert(
@@ -821,14 +779,42 @@ async function insertState(connection: PoolConnection, state: AppState) {
       INSERT INTO personal_expenses
         (id, trip_id, person_id, title, amount, expense_date, note, sort_order)
       VALUES ?
+      ON DUPLICATE KEY UPDATE
+        trip_id = VALUES(trip_id),
+        person_id = VALUES(person_id),
+        title = VALUES(title),
+        amount = VALUES(amount),
+        expense_date = VALUES(expense_date),
+        note = VALUES(note),
+        sort_order = VALUES(sort_order)
     `,
     personalRows,
   );
-  await bulkInsert(
+
+  await deleteMissingCompositeRows(
     connection,
-    "INSERT INTO adjustments (id, trip_id, person_id, title, amount, note, sort_order) VALUES ?",
-    adjustmentRows,
+    "shared_expense_participants",
+    ["expense_id", "person_id"],
+    sharedParticipantRows.map((row) => [String(row[0]), String(row[2])]),
   );
+  await deleteMissingCompositeRows(
+    connection,
+    "travel_cost_participants",
+    ["travel_cost_id", "person_id"],
+    travelParticipantRows.map((row) => [String(row[0]), String(row[1])]),
+  );
+  await deleteMissingCompositeRows(
+    connection,
+    "trip_members",
+    ["trip_id", "person_id"],
+    tripMemberRows.map((row) => [String(row[0]), String(row[1])]),
+  );
+  await deleteMissingRows(connection, "personal_expenses", "id", personalRows.map((row) => String(row[0])));
+  await deleteMissingRows(connection, "travel_costs", "id", travelRows.map((row) => String(row[0])));
+  await deleteMissingRows(connection, "shared_expenses", "id", sharedRows.map((row) => String(row[0])));
+  await deleteMissingRows(connection, "trips", "id", state.trips.map((trip) => trip.id));
+  await deleteMissingRows(connection, "categories", "name", categories);
+  await deleteMissingRows(connection, "people", "id", people.map((person) => person.id));
 }
 
 async function countBusinessRows(db: Queryable): Promise<TableStat[]> {
@@ -845,6 +831,34 @@ async function countBusinessRows(db: Queryable): Promise<TableStat[]> {
 async function queryRows<T extends RowDataPacket>(db: Queryable, sql: string, values?: QueryValues): Promise<T[]> {
   const [rows] = await db.query(sql, values);
   return rows as T[];
+}
+
+async function deleteMissingRows(
+  connection: PoolConnection,
+  table: string,
+  column: string,
+  values: Array<string | number>,
+) {
+  if (!values.length) {
+    await connection.query(`DELETE FROM ${table}`);
+    return;
+  }
+  await connection.query(`DELETE FROM ${table} WHERE ${column} NOT IN (?)`, [values]);
+}
+
+async function deleteMissingCompositeRows(
+  connection: PoolConnection,
+  table: string,
+  columns: [string, string],
+  keys: Array<[string, string]>,
+) {
+  if (!keys.length) {
+    await connection.query(`DELETE FROM ${table}`);
+    return;
+  }
+
+  const retainedKeys = keys.map(() => `(${columns[0]} = ? AND ${columns[1]} = ?)`).join(" OR ");
+  await connection.query(`DELETE FROM ${table} WHERE NOT (${retainedKeys})`, keys.flat());
 }
 
 async function bulkInsert(connection: PoolConnection, sql: string, rows: unknown[][]) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import { WechatShare } from "./wechat-share";
 import { loadRemoteState, saveRemoteState } from "@/frontend/api-client";
 import { defaultCategories, defaultState } from "@/frontend/sample-data";
@@ -27,6 +27,7 @@ import {
   getMemberLedgerItems,
   getMemberName,
   getTripCategoryTotals,
+  createReadableId,
   removeTripMember,
   splitAmount,
   uid,
@@ -39,22 +40,55 @@ const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "https://jc
 const shareImage = new URL("/api/share-card.png", siteUrl).toString();
 const wechatSignatureUrl =
   process.env.NEXT_PUBLIC_WECHAT_SIGNATURE_URL ?? "https://jcxxy.cn/gzh/api/wechat/signature";
+const topViews: TopView[] = ["workbench", "trips", "people", "categories", "ledger"];
+const ledgerTabs: LedgerTab[] = ["overview", "members", "shared", "travel", "personal", "settlement", "memberDetail"];
+
+type CreateModal = "trip" | "person" | "category" | "tripMember" | "sharedBulk";
+type EntryForm = "shared" | "travel" | "personal";
+type LedgerHistoryState = {
+  activeView: TopView;
+  tripId: string;
+  ledgerTab: LedgerTab;
+};
+
+async function saveLatestState(
+  saveInFlightRef: MutableRefObject<boolean>,
+  pendingSaveStateRef: MutableRefObject<AppState | null>,
+) {
+  if (saveInFlightRef.current || !pendingSaveStateRef.current) return;
+
+  const stateToSave = pendingSaveStateRef.current;
+  pendingSaveStateRef.current = null;
+  saveInFlightRef.current = true;
+
+  try {
+    await saveRemoteState(stateToSave);
+  } catch (error) {
+    console.error("[trip-ledger] 保存失败", error);
+  } finally {
+    saveInFlightRef.current = false;
+    if (pendingSaveStateRef.current) void saveLatestState(saveInFlightRef, pendingSaveStateRef);
+  }
+}
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>(defaultState);
   const [activeView, setActiveView] = useState<TopView>("workbench");
   const [ledgerTab, setLedgerTab] = useState<LedgerTab>("overview");
-  const [entryForm, setEntryForm] = useState<"shared" | "travel" | "personal" | null>(null);
-  const [createModal, setCreateModal] = useState<"trip" | "person" | "category" | null>(null);
+  const [entryForm, setEntryForm] = useState<EntryForm | null>(null);
+  const [createModal, setCreateModal] = useState<CreateModal | null>(null);
+  const [editingEntry, setEditingEntry] = useState<{ type: EntryForm; id: string } | null>(null);
   const [currentTripId, setCurrentTripId] = useState(defaultState.trips[0].id);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [selectedSharedIds, setSelectedSharedIds] = useState<string[]>([]);
+  const [tripPendingDeletion, setTripPendingDeletion] = useState<Trip | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultState.trips[0].members[0].id);
   const [detailFilter, setDetailFilter] = useState("全部");
   const [sharedCategoryFilter, setSharedCategoryFilter] = useState("全部");
-  const [shareState, setShareState] = useState("分享账单");
   const [personName, setPersonName] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [newTripTitle, setNewTripTitle] = useState("");
+  const [newTripDates, setNewTripDates] = useState(getCurrentYearMonth());
   const [sharedForm, setSharedForm] = useState({
     title: "",
     amount: "",
@@ -76,8 +110,16 @@ export default function Home() {
     date: "",
     note: "",
   });
+  const [bulkSharedForm, setBulkSharedForm] = useState({
+    category: defaultCategories[0],
+    participantIds: defaultState.trips[0].members.map((member) => member.id),
+  });
   const hasLoadedRemote = useRef(false);
   const skipNextSave = useRef(false);
+  const historyReadyRef = useRef(false);
+  const overlayHistoryActiveRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const pendingSaveStateRef = useRef<AppState | null>(null);
 
   const currentTrip = useMemo(
     () => appState.trips.find((trip) => trip.id === currentTripId) ?? appState.trips[0] ?? defaultState.trips[0],
@@ -117,6 +159,7 @@ export default function Home() {
     if (sharedCategoryFilter === "全部") return currentTrip.sharedExpenses;
     return currentTrip.sharedExpenses.filter((item) => item.category === sharedCategoryFilter);
   }, [currentTrip.sharedExpenses, sharedCategoryFilter]);
+  const activeOverlay = createModal ?? entryForm ?? (tripPendingDeletion ? "tripDelete" : null);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,8 +173,15 @@ export default function Home() {
         hasLoadedRemote.current = true;
         skipNextSave.current = true;
         setAppState(remoteState);
-        setCurrentTripId(remoteState.trips[0]?.id ?? defaultState.trips[0].id);
-        setSelectedMemberId(remoteState.trips[0]?.members[0]?.id ?? defaultState.trips[0].members[0].id);
+        const route = getLedgerRoute();
+        const routeTrip = remoteState.trips.find((trip) => trip.id === route.tripId);
+        const selectedTrip = routeTrip ?? remoteState.trips[0] ?? defaultState.trips[0];
+        setCurrentTripId(selectedTrip.id);
+        setSelectedMemberId(selectedTrip.members[0]?.id ?? "");
+        if (routeTrip) {
+          setActiveView("ledger");
+          setLedgerTab(route.tab);
+        }
       } catch (error) {
         if (cancelled) return;
         hasLoadedRemote.current = false;
@@ -154,10 +204,8 @@ export default function Home() {
     }
 
     const timer = window.setTimeout(() => {
-      void saveRemoteState(appState)
-        .catch((error) => {
-          console.error("[trip-ledger] 保存失败", error);
-        });
+      pendingSaveStateRef.current = appState;
+      void saveLatestState(saveInFlightRef, pendingSaveStateRef);
     }, 500);
 
     return () => window.clearTimeout(timer);
@@ -182,16 +230,102 @@ export default function Home() {
         memberId: allMemberIds.includes(form.memberId) ? form.memberId : firstMemberId,
       }));
       setSelectedGroupIds((ids) => ids.filter((id) => allMemberIds.includes(id)));
+      setSelectedSharedIds((ids) => ids.filter((id) => currentTrip.sharedExpenses.some((item) => item.id === id)));
+      setBulkSharedForm((form) => ({
+        category: appState.categories.includes(form.category) ? form.category : appState.categories[0] ?? "其他",
+        participantIds: form.participantIds.filter((id) => allMemberIds.includes(id)),
+      }));
       setSelectedMemberId((id) => (allMemberIds.includes(id) ? id : firstMemberId));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [appState.categories, currentTrip.id, currentTrip.members]);
+  }, [appState.categories, currentTrip.id, currentTrip.members, currentTrip.sharedExpenses]);
 
-  function updateTrip(updater: (trip: Trip) => Trip) {
-    setAppState((state) => ({
-      ...state,
-      trips: state.trips.map((trip) => (trip.id === currentTrip.id ? updater(trip) : trip)),
-    }));
+  useEffect(() => {
+    if (!hasLoadedRemote.current) return;
+
+    const historyState: LedgerHistoryState = {
+      activeView,
+      tripId: currentTrip.id,
+      ledgerTab,
+    };
+    const url = new URL(window.location.href);
+    if (activeView === "ledger") {
+      url.searchParams.set("tripId", currentTrip.id);
+      url.searchParams.set("tab", ledgerTab);
+    } else {
+      url.searchParams.delete("tripId");
+      url.searchParams.delete("tab");
+    }
+
+    const currentHistoryState = window.history.state?.tripLedgerUi as LedgerHistoryState | undefined;
+    if (!historyReadyRef.current) {
+      window.history.replaceState({ ...window.history.state, tripLedgerUi: historyState }, "", url);
+      historyReadyRef.current = true;
+      return;
+    }
+    if (isSameHistoryState(currentHistoryState, historyState)) return;
+
+    window.history.pushState({ ...window.history.state, tripLedgerUi: historyState }, "", url);
+  }, [activeView, currentTrip.id, ledgerTab]);
+
+  useEffect(() => {
+    if (!hasLoadedRemote.current) return;
+
+    if (activeOverlay) {
+      if (!overlayHistoryActiveRef.current) {
+        window.history.pushState({ ...window.history.state, tripLedgerOverlay: true }, "", window.location.href);
+        overlayHistoryActiveRef.current = true;
+      }
+      return;
+    }
+
+    if (overlayHistoryActiveRef.current) {
+      overlayHistoryActiveRef.current = false;
+      window.history.back();
+    }
+  }, [activeOverlay]);
+
+  useEffect(() => {
+    function restoreHistoryState(event: PopStateEvent) {
+      if (overlayHistoryActiveRef.current) {
+        overlayHistoryActiveRef.current = false;
+        setCreateModal(null);
+        setEntryForm(null);
+        setEditingEntry(null);
+        setTripPendingDeletion(null);
+        return;
+      }
+
+      const historyState = event.state?.tripLedgerUi;
+      if (!isLedgerHistoryState(historyState)) return;
+
+      const trip = appState.trips.find((item) => item.id === historyState.tripId) ?? appState.trips[0];
+      setActiveView(historyState.activeView);
+      setCurrentTripId(trip?.id ?? defaultState.trips[0].id);
+      setSelectedMemberId(trip?.members[0]?.id ?? "");
+      setLedgerTab(historyState.ledgerTab);
+    }
+
+    window.addEventListener("popstate", restoreHistoryState);
+    return () => window.removeEventListener("popstate", restoreHistoryState);
+  }, [appState.trips]);
+
+  function persistImmediately(nextState: AppState) {
+    if (!hasLoadedRemote.current) return;
+    skipNextSave.current = true;
+    pendingSaveStateRef.current = nextState;
+    void saveLatestState(saveInFlightRef, pendingSaveStateRef);
+  }
+
+  function updateTrip(updater: (trip: Trip) => Trip, saveImmediately = false) {
+    setAppState((state) => {
+      const nextState = {
+        ...state,
+        trips: state.trips.map((trip) => (trip.id === currentTrip.id ? updater(trip) : trip)),
+      };
+      if (saveImmediately) persistImmediately(nextState);
+      return nextState;
+    });
   }
 
   function openLedger(tripId: string, tab: LedgerTab = "overview") {
@@ -216,18 +350,18 @@ export default function Home() {
     const title = newTripTitle.trim();
     if (!title) return;
     const trip: Trip = {
-      id: uid("trip"),
+      id: createReadableId(title, appState.trips.map((item) => item.id)),
       title,
-      dates: "",
+      dates: newTripDates,
       members: [],
       sharedExpenses: [],
       travelCosts: [],
       personalExpenses: [],
-      adjustments: [],
     };
     setAppState((state) => ({ ...state, trips: [trip, ...state.trips] }));
     setCurrentTripId(trip.id);
     setNewTripTitle("");
+    setNewTripDates(getCurrentYearMonth());
     setCreateModal(null);
     setActiveView("ledger");
     setLedgerTab("members");
@@ -238,7 +372,10 @@ export default function Home() {
     if (!name) return;
     setAppState((state) => {
       if (state.people.some((person) => person.name === name)) return state;
-      return { ...state, people: [...state.people, { id: uid("person"), name }] };
+      return {
+        ...state,
+        people: [...state.people, { id: createReadableId(name, state.people.map((person) => person.id)), name }],
+      };
     });
     setPersonName("");
     setCreateModal(null);
@@ -247,10 +384,38 @@ export default function Home() {
   function deleteRosterPerson(personId: string) {
     const isUsed = appState.trips.some((trip) => trip.members.some((member) => member.id === personId));
     if (isUsed) return;
-    setAppState((state) => ({
-      ...state,
-      people: state.people.filter((person) => person.id !== personId),
-    }));
+    setAppState((state) => {
+      const nextState = { ...state, people: state.people.filter((person) => person.id !== personId) };
+      persistImmediately(nextState);
+      return nextState;
+    });
+  }
+
+  function requestTripDelete(trip: Trip) {
+    if (!canDeleteTrip(trip)) return;
+    setTripPendingDeletion(trip);
+  }
+
+  function confirmTripDelete() {
+    if (!tripPendingDeletion) return;
+    const tripId = tripPendingDeletion.id;
+    const targetTrip = appState.trips.find((trip) => trip.id === tripId);
+    if (!targetTrip || !canDeleteTrip(targetTrip)) {
+      setTripPendingDeletion(null);
+      return;
+    }
+
+    const remainingTrips = appState.trips.filter((trip) => trip.id !== tripId);
+    setAppState((state) => {
+      const nextState = { ...state, trips: state.trips.filter((trip) => trip.id !== tripId) };
+      persistImmediately(nextState);
+      return nextState;
+    });
+    if (currentTripId === tripId) {
+      setCurrentTripId(remainingTrips[0]?.id ?? defaultState.trips[0].id);
+      setSelectedMemberId(remainingTrips[0]?.members[0]?.id ?? "");
+    }
+    setTripPendingDeletion(null);
   }
 
   function addTripMember(personId: string) {
@@ -263,7 +428,7 @@ export default function Home() {
   }
 
   function removeMemberFromTrip(personId: string) {
-    updateTrip((trip) => removeTripMember(trip, personId));
+    updateTrip((trip) => removeTripMember(trip, personId), true);
   }
 
   function addCategory() {
@@ -282,32 +447,46 @@ export default function Home() {
       trip.sharedExpenses.some((item) => item.category === name),
     );
     if (isUsed) return;
-    setAppState((state) => ({
-      ...state,
-      categories: state.categories.filter((category) => category !== name),
-    }));
+    setAppState((state) => {
+      const nextState = { ...state, categories: state.categories.filter((category) => category !== name) };
+      persistImmediately(nextState);
+      return nextState;
+    });
   }
 
   function addSharedExpense() {
     const amount = Number(sharedForm.amount);
     const title = sharedForm.title.trim();
     if (!title || !amount || sharedForm.participantIds.length === 0) return;
-    updateTrip((trip) => ({
-      ...trip,
-      sharedExpenses: [
-        {
-          id: uid("shared"),
-          title,
-          amount,
-	          category: sharedForm.category,
-	          payerId: sharedForm.payerId || undefined,
-	          participantIds: sharedForm.participantIds,
-          note: sharedForm.note.trim(),
-        },
-        ...trip.sharedExpenses,
-      ],
-	    }));
+    const payload = {
+      title,
+      amount,
+      category: sharedForm.category,
+      payerId: sharedForm.payerId || undefined,
+      participantIds: sharedForm.participantIds,
+      note: sharedForm.note.trim(),
+    };
+    if (editingEntry?.type === "shared") {
+      updateTrip((trip) => ({
+        ...trip,
+        sharedExpenses: trip.sharedExpenses.map((item) =>
+          item.id === editingEntry.id ? { ...item, ...payload } : item,
+        ),
+      }));
+    } else {
+      updateTrip((trip) => ({
+        ...trip,
+        sharedExpenses: [
+          {
+            id: uid("shared"),
+            ...payload,
+          },
+          ...trip.sharedExpenses,
+        ],
+      }));
+    }
 	    setSharedForm((form) => ({ ...form, title: "", amount: "", note: "" }));
+    setEditingEntry(null);
 	    setEntryForm(null);
 	  }
 
@@ -315,20 +494,31 @@ export default function Home() {
     const amount = Number(travelForm.amount);
     const title = travelForm.title.trim();
     if (!title || !amount || travelForm.participantIds.length === 0) return;
-    updateTrip((trip) => ({
-      ...trip,
-      travelCosts: [
-        {
-          id: uid("travel"),
-          title,
-          amount,
-          participantIds: travelForm.participantIds,
-          note: travelForm.note.trim(),
-        },
-        ...trip.travelCosts,
-      ],
-	    }));
+    const payload = {
+      title,
+      amount,
+      participantIds: travelForm.participantIds,
+      note: travelForm.note.trim(),
+    };
+    if (editingEntry?.type === "travel") {
+      updateTrip((trip) => ({
+        ...trip,
+        travelCosts: trip.travelCosts.map((item) => (item.id === editingEntry.id ? { ...item, ...payload } : item)),
+      }));
+    } else {
+      updateTrip((trip) => ({
+        ...trip,
+        travelCosts: [
+          {
+            id: uid("travel"),
+            ...payload,
+          },
+          ...trip.travelCosts,
+        ],
+      }));
+    }
 	    setTravelForm((form) => ({ ...form, title: "", amount: "", note: "" }));
+    setEditingEntry(null);
 	    setEntryForm(null);
 	  }
 
@@ -336,21 +526,34 @@ export default function Home() {
     const amount = Number(personalForm.amount);
     const title = personalForm.title.trim();
     if (!title || !amount || !personalForm.memberId) return;
-    updateTrip((trip) => ({
-      ...trip,
-      personalExpenses: [
-        {
-          id: uid("personal"),
-          memberId: personalForm.memberId,
-          title,
-          amount,
-          date: personalForm.date,
-          note: personalForm.note.trim(),
-        },
-        ...trip.personalExpenses,
-      ],
-	    }));
+    const payload = {
+      memberId: personalForm.memberId,
+      title,
+      amount,
+      date: personalForm.date,
+      note: personalForm.note.trim(),
+    };
+    if (editingEntry?.type === "personal") {
+      updateTrip((trip) => ({
+        ...trip,
+        personalExpenses: trip.personalExpenses.map((item) =>
+          item.id === editingEntry.id ? { ...item, ...payload } : item,
+        ),
+      }));
+    } else {
+      updateTrip((trip) => ({
+        ...trip,
+        personalExpenses: [
+          {
+            id: uid("personal"),
+            ...payload,
+          },
+          ...trip.personalExpenses,
+        ],
+      }));
+    }
 	    setPersonalForm((form) => ({ ...form, title: "", amount: "", date: "", note: "" }));
+    setEditingEntry(null);
 	    setEntryForm(null);
 	  }
 
@@ -362,12 +565,26 @@ export default function Home() {
         ...trip,
         [collection]: value.filter((item) => "id" in item && item.id !== itemId),
       };
-    });
+    }, true);
   }
 
   function toggleIds(ids: string[], id: string) {
     return ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
   }
+
+  function toggleAllFilteredSharedExpenses() {
+    const visibleIds = filteredSharedExpenses.map((item) => item.id);
+    const visibleIdSet = new Set(visibleIds);
+
+    setSelectedSharedIds((ids) => {
+      const hasSelectedAll = visibleIds.length > 0 && visibleIds.every((id) => ids.includes(id));
+      if (hasSelectedAll) return ids.filter((id) => !visibleIdSet.has(id));
+      return Array.from(new Set([...ids, ...visibleIds]));
+    });
+  }
+
+  const hasSelectedAllFilteredSharedExpenses =
+    filteredSharedExpenses.length > 0 && filteredSharedExpenses.every((item) => selectedSharedIds.includes(item.id));
 
   function setAllParticipants(type: "shared" | "travel") {
     const allIds = currentTrip.members.map((member) => member.id);
@@ -376,6 +593,101 @@ export default function Home() {
       return;
     }
     setTravelForm((form) => ({ ...form, participantIds: allIds }));
+  }
+
+  function openCreateEntry(type: "shared" | "travel" | "personal") {
+    setEditingEntry(null);
+    if (type === "shared") {
+      setSharedForm({
+        title: "",
+        amount: "",
+        category: appState.categories[0] ?? "其他",
+        payerId: "",
+        participantIds: currentTrip.members.map((member) => member.id),
+        note: "",
+      });
+    }
+    if (type === "travel") {
+      setTravelForm({
+        title: "",
+        amount: "",
+        participantIds: currentTrip.members.map((member) => member.id),
+        note: "",
+      });
+    }
+    if (type === "personal") {
+      setPersonalForm({
+        memberId: currentTrip.members[0]?.id ?? "",
+        title: "",
+        amount: "",
+        date: "",
+        note: "",
+      });
+    }
+    setEntryForm(type);
+  }
+
+  function openEditSharedExpense(item: SharedExpense) {
+    setEditingEntry({ type: "shared", id: item.id });
+    setSharedForm({
+      title: item.title,
+      amount: String(item.amount),
+      category: item.category,
+      payerId: item.payerId ?? "",
+      participantIds: item.participantIds,
+      note: item.note ?? "",
+    });
+    setEntryForm("shared");
+  }
+
+  function openEditTravelCost(item: TravelCost) {
+    setEditingEntry({ type: "travel", id: item.id });
+    setTravelForm({
+      title: item.title,
+      amount: String(item.amount),
+      participantIds: item.participantIds,
+      note: item.note ?? "",
+    });
+    setEntryForm("travel");
+  }
+
+  function openEditPersonalExpense(item: PersonalExpense) {
+    setEditingEntry({ type: "personal", id: item.id });
+    setPersonalForm({
+      memberId: item.memberId,
+      title: item.title,
+      amount: String(item.amount),
+      date: item.date ?? "",
+      note: item.note ?? "",
+    });
+    setEntryForm("personal");
+  }
+
+  function openBulkSharedModal() {
+    const firstSelected = currentTrip.sharedExpenses.find((item) => selectedSharedIds.includes(item.id));
+    setBulkSharedForm({
+      category: firstSelected?.category ?? appState.categories[0] ?? "其他",
+      participantIds: firstSelected?.participantIds ?? currentTrip.members.map((member) => member.id),
+    });
+    setCreateModal("sharedBulk");
+  }
+
+  function applyBulkSharedUpdate() {
+    if (selectedSharedIds.length === 0 || bulkSharedForm.participantIds.length === 0) return;
+    updateTrip((trip) => ({
+      ...trip,
+      sharedExpenses: trip.sharedExpenses.map((item) =>
+        selectedSharedIds.includes(item.id)
+          ? {
+              ...item,
+              category: bulkSharedForm.category,
+              participantIds: bulkSharedForm.participantIds,
+            }
+          : item,
+      ),
+    }));
+    setSelectedSharedIds([]);
+    setCreateModal(null);
   }
 
   function openMemberDetail(memberId: string) {
@@ -389,39 +701,9 @@ export default function Home() {
     return sum + (item?.total ?? 0);
   }, 0);
 
-  async function shareCurrentTrip() {
+  function shareCurrentTrip() {
     const shareUrl = getTripShareUrl(currentTrip.id);
-    const title = `${currentTrip.title}分账清单`;
-    const text = `查看${currentTrip.title}的出行费用和成员分账结果`;
-
-    if (isWechatBrowser()) {
-      window.location.href = shareUrl;
-      return;
-    }
-
-    const copyShareLink = async () => {
-      await navigator.clipboard.writeText(shareUrl);
-      setShareState("链接已复制");
-      window.setTimeout(() => setShareState("分享账单"), 1600);
-    };
-
-    try {
-      if (navigator.share) {
-        try {
-          await navigator.share({ title, text, url: shareUrl });
-          return;
-        } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") return;
-          await copyShareLink();
-          return;
-        }
-      }
-
-      await copyShareLink();
-    } catch {
-      setShareState("分享失败");
-      window.setTimeout(() => setShareState("分享账单"), 1600);
-    }
+    window.location.href = shareUrl;
   }
 
   return (
@@ -449,7 +731,7 @@ export default function Home() {
               返回出行管理
             </button>
             <button type="button" className="ghost-button" onClick={shareCurrentTrip}>
-              {shareState}
+              分享账单
             </button>
             <select
               value={currentTrip.id}
@@ -550,7 +832,7 @@ export default function Home() {
                 新建账单
               </button>
             </div>
-            <TripList trips={appState.trips} onOpen={openLedger} />
+            <TripList trips={appState.trips} onOpen={openLedger} onRequestDelete={requestTripDelete} />
           </Panel>
 
           <Panel title="出行分布" kicker="账单金额">
@@ -633,7 +915,7 @@ export default function Home() {
 	                  <Stat label="公共参考人均" value={formatMoney(totals.sharedAverage)} onClick={() => setLedgerTab("shared")} />
 	                  <Stat label="出行费用" value={formatMoney(totals.travelTotal)} onClick={() => setLedgerTab("travel")} />
 	                  <Stat label="个人费用" value={formatMoney(totals.personalTotal)} onClick={() => setLedgerTab("personal")} />
-	                  <Stat label="已付款" value={formatMoney(totals.paidTotal + Math.abs(totals.adjustmentTotal))} onClick={() => setLedgerTab("shared")} />
+                  <Stat label="已付款" value={formatMoney(totals.paidTotal)} onClick={() => setLedgerTab("shared")} />
 	                  <Stat label="成员数" value={`${currentTrip.members.length}`} onClick={() => setLedgerTab("members")} />
 	                </div>
 	              </Panel>
@@ -646,16 +928,13 @@ export default function Home() {
 
           {ledgerTab === "members" && (
             <section className="content-grid">
-              <Panel title="从人员库添加" kicker="全局人员">
-                <AvailablePeople
-                  people={appState.people}
-                  currentTrip={currentTrip}
-                  onAdd={addTripMember}
-                  onGoPeople={() => setActiveView("people")}
-                />
-              </Panel>
-
               <Panel title="本次人员列表" kicker={`${currentTrip.members.length} 人`}>
+                <div className="list-toolbar">
+                  <span>本页只维护当前账单成员，新增人员从公共人员库选择</span>
+                  <button type="button" onClick={() => setCreateModal("tripMember")}>
+                    新增人员
+                  </button>
+                </div>
                 <CurrentTripMembers members={currentTrip.members} onRemove={removeMemberFromTrip} />
               </Panel>
             </section>
@@ -666,10 +945,20 @@ export default function Home() {
 	              <Panel title="公共费用清单" kicker={`${filteredSharedExpenses.length}/${currentTrip.sharedExpenses.length} 项`}>
 	                <div className="list-toolbar">
 	                  <span>成员付款会自动抵扣最终应付</span>
-	                  <button type="button" onClick={() => setEntryForm("shared")}>
+	                  <button type="button" onClick={() => openCreateEntry("shared")}>
 	                    新增公费
 	                  </button>
 	                </div>
+                    {selectedSharedIds.length > 0 && (
+                      <div className="shared-batch-toolbar">
+                        <button type="button" className="ghost-button" onClick={toggleAllFilteredSharedExpenses}>
+                          {hasSelectedAllFilteredSharedExpenses ? "取消全选" : "全选"}
+                        </button>
+                        <button type="button" className="ghost-button" onClick={openBulkSharedModal}>
+                          批量调整({selectedSharedIds.length})
+                        </button>
+                      </div>
+                    )}
 	                <CategoryFilter
 	                  categories={sharedCategoryOptions}
 	                  activeFilter={sharedCategoryFilter}
@@ -678,6 +967,9 @@ export default function Home() {
 	                <ExpenseList
 	                  trip={currentTrip}
 	                  items={filteredSharedExpenses}
+                    selectedIds={selectedSharedIds}
+                    onToggleSelect={(id) => setSelectedSharedIds((ids) => toggleIds(ids, id))}
+                    onEdit={openEditSharedExpense}
 	                  onDelete={(id) => deleteItem("sharedExpenses", id)}
 	                />
 	              </Panel>
@@ -690,13 +982,14 @@ export default function Home() {
 	              <Panel title="出行费用清单" kicker={`${currentTrip.travelCosts.length} 项`}>
 	                <div className="list-toolbar">
 	                  <span>车票、机票、城际交通等单独分摊</span>
-	                  <button type="button" onClick={() => setEntryForm("travel")}>
+	                  <button type="button" onClick={() => openCreateEntry("travel")}>
 	                    新增出行
 	                  </button>
 	                </div>
 	                <TravelList
 	                  trip={currentTrip}
 	                  items={currentTrip.travelCosts}
+                    onEdit={openEditTravelCost}
 	                  onDelete={(id) => deleteItem("travelCosts", id)}
 	                />
 	              </Panel>
@@ -709,13 +1002,14 @@ export default function Home() {
 	              <Panel title="个人费用清单" kicker="不计入公共总费用">
 	                <div className="list-toolbar">
 	                  <span>只计入成员个人清单，不进入公共总费用</span>
-	                  <button type="button" onClick={() => setEntryForm("personal")}>
+	                  <button type="button" onClick={() => openCreateEntry("personal")}>
 	                    新增个人
 	                  </button>
 	                </div>
 	                <PersonalList
 	                  trip={currentTrip}
 	                  items={currentTrip.personalExpenses}
+                    onEdit={openEditPersonalExpense}
 	                  onDelete={(id) => deleteItem("personalExpenses", id)}
 	                />
 	              </Panel>
@@ -800,6 +1094,12 @@ export default function Home() {
               onChange={(event) => setNewTripTitle(event.target.value)}
               placeholder="新出行账单名称"
             />
+            <input
+              type="month"
+              value={newTripDates}
+              onChange={(event) => setNewTripDates(event.target.value)}
+              aria-label="出行年月"
+            />
           </div>
           <div className="form-footer">
             <button type="button" className="ghost-button" onClick={() => setCreateModal(null)}>
@@ -852,8 +1152,86 @@ export default function Home() {
         </Modal>
       )}
 
+      {createModal === "tripMember" && (
+        <Modal title="添加本次人员" kicker="人员库" onClose={() => setCreateModal(null)}>
+          <AvailablePeople
+            people={appState.people}
+            currentTrip={currentTrip}
+            onAdd={addTripMember}
+            onGoPeople={() => {
+              setCreateModal(null);
+              setActiveView("people");
+            }}
+          />
+        </Modal>
+      )}
+
+      {createModal === "sharedBulk" && (
+        <Modal title="批量调整公费" kicker={`${selectedSharedIds.length} 项已选`} onClose={() => setCreateModal(null)}>
+          <div className="form-grid single-form">
+            <select
+              value={bulkSharedForm.category}
+              onChange={(event) => setBulkSharedForm((form) => ({ ...form, category: event.target.value }))}
+            >
+              {appState.categories.map((category) => (
+                <option key={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+          <ParticipantPicker
+            members={currentTrip.members}
+            selectedIds={bulkSharedForm.participantIds}
+            onToggle={(id) =>
+              setBulkSharedForm((form) => ({
+                ...form,
+                participantIds: toggleIds(form.participantIds, id),
+              }))
+            }
+            onSelectAll={() =>
+              setBulkSharedForm((form) => ({
+                ...form,
+                participantIds: currentTrip.members.map((member) => member.id),
+              }))
+            }
+          />
+          <div className="form-footer">
+            <span>统一调整事项类型和参与人员</span>
+            <button type="button" className="ghost-button" onClick={() => setCreateModal(null)}>
+              取消
+            </button>
+            <button type="button" onClick={applyBulkSharedUpdate}>
+              保存调整
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {tripPendingDeletion && (
+        <Modal title="删除账单" kicker="确认操作" onClose={() => setTripPendingDeletion(null)}>
+          <p className="modal-message">
+            确认删除“{tripPendingDeletion.title}”？该账单当前没有费用记录，删除后不可恢复。
+          </p>
+          <div className="form-footer">
+            <span>本次人员不会从全局人员库中移除。</span>
+            <button type="button" className="ghost-button" onClick={() => setTripPendingDeletion(null)}>
+              取消
+            </button>
+            <button type="button" className="danger-button" onClick={confirmTripDelete}>
+              确认删除
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {entryForm === "shared" && (
-        <Modal title="公共费用录入" kicker="多人分摊" onClose={() => setEntryForm(null)}>
+        <Modal
+          title={editingEntry?.type === "shared" ? "编辑公共费用" : "公共费用录入"}
+          kicker="多人分摊"
+          onClose={() => {
+            setEditingEntry(null);
+            setEntryForm(null);
+          }}
+        >
           <div className="form-grid">
             <input
               value={sharedForm.title}
@@ -908,18 +1286,32 @@ export default function Home() {
               该项人均：
               {formatMoney(splitAmount(Number(sharedForm.amount), sharedForm.participantIds.length))}
             </span>
-            <button type="button" className="ghost-button" onClick={() => setEntryForm(null)}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                setEditingEntry(null);
+                setEntryForm(null);
+              }}
+            >
               取消
             </button>
             <button type="button" onClick={addSharedExpense}>
-              保存公共费用
+              {editingEntry?.type === "shared" ? "保存修改" : "保存公共费用"}
             </button>
           </div>
         </Modal>
       )}
 
       {entryForm === "travel" && (
-        <Modal title="出行费用录入" kicker="车票/机票/城际交通" onClose={() => setEntryForm(null)}>
+        <Modal
+          title={editingEntry?.type === "travel" ? "编辑出行费用" : "出行费用录入"}
+          kicker="车票/机票/城际交通"
+          onClose={() => {
+            setEditingEntry(null);
+            setEntryForm(null);
+          }}
+        >
           <div className="form-grid">
             <input
               value={travelForm.title}
@@ -955,18 +1347,32 @@ export default function Home() {
               该项人均：
               {formatMoney(splitAmount(Number(travelForm.amount), travelForm.participantIds.length))}
             </span>
-            <button type="button" className="ghost-button" onClick={() => setEntryForm(null)}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                setEditingEntry(null);
+                setEntryForm(null);
+              }}
+            >
               取消
             </button>
             <button type="button" onClick={addTravelCost}>
-              保存出行费用
+              {editingEntry?.type === "travel" ? "保存修改" : "保存出行费用"}
             </button>
           </div>
         </Modal>
       )}
 
       {entryForm === "personal" && (
-        <Modal title="个人费用录入" kicker="成员个人花销" onClose={() => setEntryForm(null)}>
+        <Modal
+          title={editingEntry?.type === "personal" ? "编辑个人费用" : "个人费用录入"}
+          kicker="成员个人花销"
+          onClose={() => {
+            setEditingEntry(null);
+            setEntryForm(null);
+          }}
+        >
           <div className="form-grid">
             <select
               value={personalForm.memberId}
@@ -1003,11 +1409,18 @@ export default function Home() {
           </div>
           <div className="form-footer">
             <span>会计入该成员个人合计，不进入公共总费用</span>
-            <button type="button" className="ghost-button" onClick={() => setEntryForm(null)}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                setEditingEntry(null);
+                setEntryForm(null);
+              }}
+            >
               取消
             </button>
             <button type="button" onClick={addPersonalExpense}>
-              保存个人费用
+              {editingEntry?.type === "personal" ? "保存修改" : "保存个人费用"}
             </button>
           </div>
         </Modal>
@@ -1024,9 +1437,33 @@ function getTripShareUrl(tripId: string) {
   return url.toString();
 }
 
-function isWechatBrowser() {
-  if (typeof window === "undefined") return false;
-  return /MicroMessenger/i.test(window.navigator.userAgent);
+function getCurrentYearMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getLedgerRoute(): { tripId: string; tab: LedgerTab } {
+  if (typeof window === "undefined") return { tripId: "", tab: "overview" };
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  return {
+    tripId: params.get("tripId") ?? "",
+    tab: ledgerTabs.includes(tab as LedgerTab) ? (tab as LedgerTab) : "overview",
+  };
+}
+
+function isSameHistoryState(left: LedgerHistoryState | undefined, right: LedgerHistoryState) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isLedgerHistoryState(value: unknown): value is LedgerHistoryState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<LedgerHistoryState>;
+  return (
+    topViews.includes(state.activeView as TopView) &&
+    typeof state.tripId === "string" &&
+    ledgerTabs.includes(state.ledgerTab as LedgerTab)
+  );
 }
 
 function normalizeSiteUrl(value: string) {
@@ -1112,24 +1549,56 @@ function Empty({ text }: { text: string }) {
   return <p className="empty">{text}</p>;
 }
 
-function TripList({ trips, onOpen }: { trips: Trip[]; onOpen: (id: string) => void }) {
+function TripList({
+  trips,
+  onOpen,
+  onRequestDelete,
+}: {
+  trips: Trip[];
+  onOpen: (id: string) => void;
+  onRequestDelete: (trip: Trip) => void;
+}) {
   if (trips.length === 0) return <Empty text="暂无出行账单" />;
   return (
     <div className="trip-list">
       {trips.map((trip) => {
         const totals = calculateTrip(trip);
         return (
-          <button className="trip-card" type="button" key={trip.id} onClick={() => onOpen(trip.id)}>
+          <article className="trip-card" key={trip.id}>
+            <button className="trip-card-main" type="button" onClick={() => onOpen(trip.id)}>
             <div>
               <strong>{trip.title}</strong>
               <span>{trip.members.length} 人 / {trip.sharedExpenses.length + trip.travelCosts.length + trip.personalExpenses.length} 项费用</span>
             </div>
-            <b>{formatMoney(totals.finalTotal)}</b>
-          </button>
+            </button>
+            <div className="trip-card-side">
+              <b>{formatMoney(totals.finalTotal)}</b>
+              {canDeleteTrip(trip) ? (
+                <button type="button" className="ghost-danger" onClick={() => onRequestDelete(trip)}>
+                  删除
+                </button>
+              ) : (
+                <span className="trip-delete-blocked">{getTripDeleteBlockReason(trip)}</span>
+              )}
+            </div>
+          </article>
         );
       })}
     </div>
   );
+}
+
+function canDeleteTrip(trip: Trip) {
+  return trip.sharedExpenses.length + trip.travelCosts.length + trip.personalExpenses.length === 0;
+}
+
+function getTripDeleteBlockReason(trip: Trip) {
+  const expenseTypes = [
+    trip.sharedExpenses.length > 0 ? "公共" : "",
+    trip.travelCosts.length > 0 ? "出行" : "",
+    trip.personalExpenses.length > 0 ? "个人" : "",
+  ].filter(Boolean);
+  return `有${expenseTypes.join("、")}费用不可删`;
 }
 
 function TripAmountBars({ trips }: { trips: Trip[] }) {
@@ -1302,7 +1771,7 @@ function SettlementTable({ totals, onOpen }: { totals: MemberTotal[]; onOpen: (i
           <span>{formatMoney(item.travel)}</span>
           <span>{formatMoney(item.shared)}</span>
           <span>{formatMoney(item.personal)}</span>
-	          <span>{formatMoney(item.adjustment - item.paid)}</span>
+          <span>{formatMoney(-item.paid)}</span>
         </button>
       ))}
     </div>
@@ -1447,12 +1916,33 @@ function CategoryFilter({
   );
 }
 
-function ExpenseList({ trip, items, onDelete }: { trip: Trip; items: SharedExpense[]; onDelete: (id: string) => void }) {
+function ExpenseList({
+  trip,
+  items,
+  selectedIds,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}: {
+  trip: Trip;
+  items: SharedExpense[];
+  selectedIds: string[];
+  onToggleSelect: (id: string) => void;
+  onEdit: (item: SharedExpense) => void;
+  onDelete: (id: string) => void;
+}) {
   if (items.length === 0) return <Empty text="暂无公共费用" />;
   return (
     <div className="item-list">
 	      {items.map((item) => (
-	        <article className="ledger-item" key={item.id}>
+	        <article className="ledger-item selectable-item" key={item.id}>
+            <label className="item-check" aria-label={`选择${item.title}`}>
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(item.id)}
+                onChange={() => onToggleSelect(item.id)}
+              />
+            </label>
 	          <div className="ledger-main">
 	            <div className="ledger-title-row">
 	              <strong>{item.title}</strong>
@@ -1470,16 +1960,31 @@ function ExpenseList({ trip, items, onDelete }: { trip: Trip; items: SharedExpen
             <b>{formatMoney(item.amount)}</b>
             <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
           </div>
-          <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
-            x
-          </button>
+          <div className="item-actions">
+            <button type="button" className="ghost-button" onClick={() => onEdit(item)}>
+              编辑
+            </button>
+            <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
+              x
+            </button>
+          </div>
         </article>
       ))}
     </div>
   );
 }
 
-function TravelList({ trip, items, onDelete }: { trip: Trip; items: TravelCost[]; onDelete: (id: string) => void }) {
+function TravelList({
+  trip,
+  items,
+  onEdit,
+  onDelete,
+}: {
+  trip: Trip;
+  items: TravelCost[];
+  onEdit: (item: TravelCost) => void;
+  onDelete: (id: string) => void;
+}) {
   if (items.length === 0) return <Empty text="暂无出行费用" />;
   return (
     <div className="item-list">
@@ -1500,16 +2005,31 @@ function TravelList({ trip, items, onDelete }: { trip: Trip; items: TravelCost[]
             <b>{formatMoney(item.amount)}</b>
             <small>人均 {formatMoney(splitAmount(item.amount, item.participantIds.length))}</small>
           </div>
-          <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
-            x
-          </button>
+          <div className="item-actions">
+            <button type="button" className="ghost-button" onClick={() => onEdit(item)}>
+              编辑
+            </button>
+            <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
+              x
+            </button>
+          </div>
         </article>
       ))}
     </div>
   );
 }
 
-function PersonalList({ trip, items, onDelete }: { trip: Trip; items: PersonalExpense[]; onDelete: (id: string) => void }) {
+function PersonalList({
+  trip,
+  items,
+  onEdit,
+  onDelete,
+}: {
+  trip: Trip;
+  items: PersonalExpense[];
+  onEdit: (item: PersonalExpense) => void;
+  onDelete: (id: string) => void;
+}) {
   if (items.length === 0) return <Empty text="暂无个人费用" />;
   return (
     <div className="item-list">
@@ -1536,9 +2056,14 @@ function PersonalList({ trip, items, onDelete }: { trip: Trip; items: PersonalEx
             <b>{formatMoney(item.amount)}</b>
             <small>个人费用</small>
           </div>
-          <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
-            x
-          </button>
+          <div className="item-actions">
+            <button type="button" className="ghost-button" onClick={() => onEdit(item)}>
+              编辑
+            </button>
+            <button type="button" aria-label={`删除${item.title}`} onClick={() => onDelete(item.id)}>
+              x
+            </button>
+          </div>
         </article>
       ))}
     </div>

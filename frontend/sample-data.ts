@@ -34,10 +34,6 @@ export const defaultState: AppState = {
       ],
       travelCosts: [],
       personalExpenses: [],
-      adjustments: [
-        { id: "adj-laoz", memberId: "laoz", title: "自付扣减", amount: -90 },
-        { id: "adj-renz", memberId: "renz", title: "自付扣减", amount: -226 },
-      ],
     },
     {
       id: "changsha-zhangjiajie-2026",
@@ -80,7 +76,6 @@ export const defaultState: AppState = {
           note: "286+276+10+336+200+136+96",
         },
       ],
-      adjustments: [{ id: "adj-tianh", memberId: "tianh", title: "自付扣减", amount: -295 }],
     },
   ],
   categories: defaultCategories,
