@@ -118,8 +118,11 @@ export default function Home() {
   const skipNextSave = useRef(false);
   const historyReadyRef = useRef(false);
   const overlayHistoryActiveRef = useRef(false);
+  const ledgerTabHistoryActiveRef = useRef(false);
+  const ignoreNextPopStateRef = useRef(false);
   const saveInFlightRef = useRef(false);
   const pendingSaveStateRef = useRef<AppState | null>(null);
+  const ledgerTabsRef = useRef<HTMLElement | null>(null);
 
   const currentTrip = useMemo(
     () => appState.trips.find((trip) => trip.id === currentTripId) ?? appState.trips[0] ?? defaultState.trips[0],
@@ -265,7 +268,72 @@ export default function Home() {
     }
     if (isSameHistoryState(currentHistoryState, historyState)) return;
 
+    const isSamePage =
+      currentHistoryState?.activeView === historyState.activeView && currentHistoryState?.tripId === historyState.tripId;
+    if (isSamePage) {
+      window.history.replaceState({ ...window.history.state, tripLedgerUi: historyState }, "", url);
+      return;
+    }
+
+    if (window.history.state?.tripLedgerTab) {
+      ledgerTabHistoryActiveRef.current = false;
+      window.history.replaceState(
+        { ...window.history.state, tripLedgerTab: false, tripLedgerUi: historyState },
+        "",
+        url,
+      );
+      return;
+    }
+
+    if (currentHistoryState?.activeView === "ledger" && currentHistoryState.ledgerTab !== "overview") {
+      const previousUrl = new URL(window.location.href);
+      previousUrl.searchParams.set("tripId", currentHistoryState.tripId);
+      previousUrl.searchParams.set("tab", "overview");
+      window.history.replaceState(
+        { ...window.history.state, tripLedgerUi: { ...currentHistoryState, ledgerTab: "overview" } },
+        "",
+        previousUrl,
+      );
+    }
+
     window.history.pushState({ ...window.history.state, tripLedgerUi: historyState }, "", url);
+  }, [activeView, currentTrip.id, ledgerTab]);
+
+  useEffect(() => {
+    if (!hasLoadedRemote.current || activeView !== "ledger") return;
+
+    if (ledgerTab !== "overview" && !ledgerTabHistoryActiveRef.current) {
+      const overviewState: LedgerHistoryState = {
+        activeView: "ledger",
+        tripId: currentTrip.id,
+        ledgerTab: "overview",
+      };
+      const overviewUrl = new URL(window.location.href);
+      overviewUrl.searchParams.set("tripId", currentTrip.id);
+      overviewUrl.searchParams.set("tab", "overview");
+      window.history.replaceState(
+        { ...window.history.state, tripLedgerUi: overviewState, tripLedgerTab: false },
+        "",
+        overviewUrl,
+      );
+
+      const tabState: LedgerHistoryState = { ...overviewState, ledgerTab };
+      const tabUrl = new URL(overviewUrl);
+      tabUrl.searchParams.set("tab", ledgerTab);
+      window.history.pushState(
+        { ...window.history.state, tripLedgerUi: tabState, tripLedgerTab: true },
+        "",
+        tabUrl,
+      );
+      ledgerTabHistoryActiveRef.current = true;
+      return;
+    }
+
+    if (ledgerTab === "overview" && ledgerTabHistoryActiveRef.current) {
+      ledgerTabHistoryActiveRef.current = false;
+      ignoreNextPopStateRef.current = true;
+      window.history.back();
+    }
   }, [activeView, currentTrip.id, ledgerTab]);
 
   useEffect(() => {
@@ -281,18 +349,44 @@ export default function Home() {
 
     if (overlayHistoryActiveRef.current) {
       overlayHistoryActiveRef.current = false;
+      ignoreNextPopStateRef.current = true;
       window.history.back();
     }
   }, [activeOverlay]);
 
   useEffect(() => {
     function restoreHistoryState(event: PopStateEvent) {
+      if (ignoreNextPopStateRef.current) {
+        ignoreNextPopStateRef.current = false;
+        return;
+      }
+
       if (overlayHistoryActiveRef.current) {
         overlayHistoryActiveRef.current = false;
         setCreateModal(null);
         setEntryForm(null);
         setEditingEntry(null);
         setTripPendingDeletion(null);
+        return;
+      }
+
+      if (ledgerTabHistoryActiveRef.current) {
+        ledgerTabHistoryActiveRef.current = false;
+        setLedgerTab("overview");
+        return;
+      }
+
+      if (activeView === "ledger" && ledgerTab !== "overview") {
+        const overviewState: LedgerHistoryState = {
+          activeView: "ledger",
+          tripId: currentTrip.id,
+          ledgerTab: "overview",
+        };
+        const overviewUrl = new URL(window.location.href);
+        overviewUrl.searchParams.set("tripId", currentTrip.id);
+        overviewUrl.searchParams.set("tab", "overview");
+        window.history.pushState({ ...event.state, tripLedgerUi: overviewState }, "", overviewUrl);
+        setLedgerTab("overview");
         return;
       }
 
@@ -303,12 +397,28 @@ export default function Home() {
       setActiveView(historyState.activeView);
       setCurrentTripId(trip?.id ?? defaultState.trips[0].id);
       setSelectedMemberId(trip?.members[0]?.id ?? "");
-      setLedgerTab(historyState.ledgerTab);
+      setLedgerTab(historyState.activeView === "ledger" ? "overview" : historyState.ledgerTab);
     }
 
     window.addEventListener("popstate", restoreHistoryState);
     return () => window.removeEventListener("popstate", restoreHistoryState);
-  }, [appState.trips]);
+  }, [activeView, appState.trips, currentTrip.id, ledgerTab]);
+
+  useEffect(() => {
+    if (activeView !== "ledger") return;
+    const frame = window.requestAnimationFrame(() => {
+      const tabs = ledgerTabsRef.current;
+      const activeTab = tabs?.querySelector<HTMLButtonElement>("button.active");
+      if (!tabs || !activeTab) return;
+
+      const targetLeft =
+        ledgerTab === "overview"
+          ? 0
+          : activeTab.offsetLeft - (tabs.clientWidth - activeTab.offsetWidth) / 2;
+      tabs.scrollTo({ left: Math.max(0, targetLeft), behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeView, currentTrip.id, ledgerTab]);
 
   function persistImmediately(nextState: AppState) {
     if (!hasLoadedRemote.current) return;
@@ -328,8 +438,60 @@ export default function Home() {
     });
   }
 
+  function pushUiNavigation(nextState: LedgerHistoryState) {
+    const nextUrl = new URL(window.location.href);
+    if (nextState.activeView === "ledger") {
+      nextUrl.searchParams.set("tripId", nextState.tripId);
+      nextUrl.searchParams.set("tab", nextState.ledgerTab);
+    } else {
+      nextUrl.searchParams.delete("tripId");
+      nextUrl.searchParams.delete("tab");
+    }
+
+    const currentState = window.history.state?.tripLedgerUi;
+    if (!isLedgerHistoryState(currentState)) {
+      const fallbackState: LedgerHistoryState = {
+        activeView,
+        tripId: currentTrip.id,
+        ledgerTab,
+      };
+      window.history.replaceState(
+        { ...window.history.state, tripLedgerUi: fallbackState },
+        "",
+        window.location.href,
+      );
+      historyReadyRef.current = true;
+    }
+
+    if (window.history.state?.tripLedgerTab) {
+      ledgerTabHistoryActiveRef.current = false;
+      window.history.replaceState(
+        { ...window.history.state, tripLedgerTab: false, tripLedgerUi: nextState },
+        "",
+        nextUrl,
+      );
+      return;
+    }
+
+    window.history.pushState(
+      { ...window.history.state, tripLedgerOverlay: false, tripLedgerUi: nextState },
+      "",
+      nextUrl,
+    );
+  }
+
+  function navigateTopView(view: Exclude<TopView, "ledger">) {
+    if (activeView === view) return;
+    pushUiNavigation({ activeView: view, tripId: currentTrip.id, ledgerTab: "overview" });
+    setLedgerTab("overview");
+    setActiveView(view);
+  }
+
   function openLedger(tripId: string, tab: LedgerTab = "overview") {
     const trip = appState.trips.find((item) => item.id === tripId);
+    if (activeView !== "ledger" || currentTrip.id !== tripId) {
+      pushUiNavigation({ activeView: "ledger", tripId, ledgerTab: tab });
+    }
     setCurrentTripId(tripId);
     setSelectedMemberId(trip?.members[0]?.id ?? "");
     setDetailFilter("全部");
@@ -340,7 +502,7 @@ export default function Home() {
   function openFirstLedger() {
     const firstTrip = appState.trips[0];
     if (!firstTrip) {
-      setActiveView("trips");
+      navigateTopView("trips");
       return;
     }
     openLedger(firstTrip.id, "overview");
@@ -358,6 +520,7 @@ export default function Home() {
       travelCosts: [],
       personalExpenses: [],
     };
+    pushUiNavigation({ activeView: "ledger", tripId: trip.id, ledgerTab: "members" });
     setAppState((state) => ({ ...state, trips: [trip, ...state.trips] }));
     setCurrentTripId(trip.id);
     setNewTripTitle("");
@@ -727,7 +890,7 @@ export default function Home() {
 
         {activeView === "ledger" ? (
           <div className="trip-switcher">
-            <button type="button" className="ghost-button" onClick={() => setActiveView("trips")}>
+            <button type="button" className="ghost-button" onClick={() => navigateTopView("trips")}>
               返回出行管理
             </button>
             <button type="button" className="ghost-button" onClick={shareCurrentTrip}>
@@ -759,28 +922,28 @@ export default function Home() {
           <button
             type="button"
             className={activeView === "workbench" ? "active" : ""}
-            onClick={() => setActiveView("workbench")}
+            onClick={() => navigateTopView("workbench")}
           >
             工作台
           </button>
           <button
             type="button"
             className={activeView === "trips" ? "active" : ""}
-            onClick={() => setActiveView("trips")}
+            onClick={() => navigateTopView("trips")}
           >
             出行管理
           </button>
           <button
             type="button"
             className={activeView === "people" ? "active" : ""}
-            onClick={() => setActiveView("people")}
+            onClick={() => navigateTopView("people")}
           >
             人员管理
           </button>
           <button
             type="button"
             className={activeView === "categories" ? "active" : ""}
-            onClick={() => setActiveView("categories")}
+            onClick={() => navigateTopView("categories")}
           >
             类别管理
           </button>
@@ -806,15 +969,15 @@ export default function Home() {
 
           <Panel title="管理类" kicker="常用入口">
             <div className="management-grid">
-              <button type="button" onClick={() => setActiveView("trips")}>
+              <button type="button" onClick={() => navigateTopView("trips")}>
                 <span>出行管理</span>
                 <strong>{appState.trips.length} 个账单</strong>
               </button>
-              <button type="button" onClick={() => setActiveView("people")}>
+              <button type="button" onClick={() => navigateTopView("people")}>
                 <span>人员管理</span>
                 <strong>{appState.people.length} 人</strong>
               </button>
-              <button type="button" onClick={() => setActiveView("categories")}>
+              <button type="button" onClick={() => navigateTopView("categories")}>
                 <span>类别管理</span>
                 <strong>{appState.categories.length} 类</strong>
               </button>
@@ -887,7 +1050,7 @@ export default function Home() {
 
       {activeView === "ledger" && (
         <>
-	          <nav className="ledger-tabs" aria-label="账单详情导航">
+	          <nav ref={ledgerTabsRef} className="ledger-tabs" aria-label="账单详情导航">
 	            {[
 	              ["overview", "总览"],
 	              ["settlement", "清单"],
@@ -949,6 +1112,11 @@ export default function Home() {
 	                    新增公费
 	                  </button>
 	                </div>
+	                <CategoryFilter
+	                  categories={sharedCategoryOptions}
+	                  activeFilter={sharedCategoryFilter}
+	                  onFilter={setSharedCategoryFilter}
+	                />
                     {selectedSharedIds.length > 0 && (
                       <div className="shared-batch-toolbar">
                         <button type="button" className="ghost-button" onClick={toggleAllFilteredSharedExpenses}>
@@ -959,11 +1127,6 @@ export default function Home() {
                         </button>
                       </div>
                     )}
-	                <CategoryFilter
-	                  categories={sharedCategoryOptions}
-	                  activeFilter={sharedCategoryFilter}
-	                  onFilter={setSharedCategoryFilter}
-	                />
 	                <ExpenseList
 	                  trip={currentTrip}
 	                  items={filteredSharedExpenses}
