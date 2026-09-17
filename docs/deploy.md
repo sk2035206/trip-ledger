@@ -57,6 +57,18 @@ vi config/mysql.json
 API_HOST=127.0.0.1 API_PORT=5174 WEB_HOST=127.0.0.1 WEB_PORT=5173 npm run prod:start
 ```
 
+### 服务器内存注意事项
+
+生产服务器内存较小（约 2GB），`npm ci` 重建依赖树时可能被系统 OOM 杀掉，导致 `node_modules` 处于不完整状态。建议：
+
+- 先停服务再安装：`npm run prod:stop`，确认 `ss -lntp | grep -E "5173|5174"` 无输出。
+- 安装前把现有依赖挪开做回滚点：`mv node_modules node_modules.bak`。
+- 安装失败（输出 `Killed`）时恢复：`rm -rf node_modules && mv node_modules.bak node_modules`，再排查，不要直接重启服务。
+- 安装成功并验证服务正常后再删除回滚点：`rm -rf node_modules.bak`。
+- 若只是升级代码、依赖未变，可跳过 `npm ci`，直接用已安装的 `node_modules` 启动，避免 OOM 风险。
+
+本项目生产运行依赖部分 `devDependencies`（`tsx` 用于后端 API，`vinext` 用于 Web 服务），因此不要使用 `npm ci --omit=dev`。
+
 如果正式访问域名不是 `https://jcxxy.cn/ledger/`，启动 Web 前设置公网地址，微信分享卡片会用它生成缩略图地址：
 
 ```bash
