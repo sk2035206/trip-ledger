@@ -703,7 +703,7 @@ export default function Home() {
       memberId: personalForm.memberId,
       title,
       amount,
-      date: personalForm.date,
+      date: normalizeBillTime(personalForm.date),
       note: personalForm.note.trim(),
     };
     if (editingEntry?.type === "personal") {
@@ -1618,14 +1618,16 @@ export default function Home() {
               onChange={(event) => setSharedForm((form) => ({ ...form, amount: event.target.value }))}
               placeholder="金额"
             />
-            <input
-              type="date"
-              value={toBillTimeInputValue(sharedForm.billTime)}
-              onChange={(event) =>
-                setSharedForm((form) => ({ ...form, billTime: normalizeBillTime(event.target.value) }))
-              }
-              aria-label="账单时间"
-            />
+            <label className="field-with-label">
+              <span>账单时间</span>
+              <input
+                type="date"
+                value={toBillTimeInputValue(sharedForm.billTime)}
+                onChange={(event) =>
+                  setSharedForm((form) => ({ ...form, billTime: normalizeBillTime(event.target.value) }))
+                }
+              />
+            </label>
             <select
               value={sharedForm.category}
               onChange={(event) => setSharedForm((form) => ({ ...form, category: event.target.value }))}
@@ -1777,11 +1779,16 @@ export default function Home() {
               onChange={(event) => setPersonalForm((form) => ({ ...form, amount: event.target.value }))}
               placeholder="金额"
             />
-            <input
-              value={personalForm.date}
-              onChange={(event) => setPersonalForm((form) => ({ ...form, date: event.target.value }))}
-              placeholder="日期，可选"
-            />
+            <label className="field-with-label">
+              <span>日期</span>
+              <input
+                type="date"
+                value={toBillTimeInputValue(personalForm.date)}
+                onChange={(event) =>
+                  setPersonalForm((form) => ({ ...form, date: normalizeBillTime(event.target.value) }))
+                }
+              />
+            </label>
             <input
               className="wide-field"
               value={personalForm.note}
