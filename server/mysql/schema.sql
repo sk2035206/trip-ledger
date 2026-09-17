@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS shared_expenses (
   title VARCHAR(200) NOT NULL COMMENT '费用事项名称',
   category_name VARCHAR(100) NOT NULL COMMENT '公共费用类别名称',
   amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '费用金额',
+  bill_time VARCHAR(32) NULL COMMENT '账单时间',
   payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款',
   note TEXT NULL COMMENT '备注',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',

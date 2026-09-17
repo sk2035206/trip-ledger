@@ -64,7 +64,8 @@ body::before {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -182,7 +183,8 @@ h1 {
 }
 
 select,
-input {
+input,
+textarea {
   width: 100%;
   min-height: 38px;
   border: 1px solid var(--line);
@@ -194,9 +196,17 @@ input {
 }
 
 select:focus,
-input:focus {
+input:focus,
+textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(23, 76, 67, 0.15);
+}
+
+textarea {
+  min-height: 118px;
+  resize: vertical;
+  padding: 10px 11px;
+  line-height: 1.55;
 }
 
 button {
@@ -652,6 +662,89 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.import-uploader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.file-button {
+  display: inline-grid;
+  place-items: center;
+  min-height: 36px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: #fffaf1;
+  padding: 0 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.file-button:hover {
+  background: var(--primary-strong);
+}
+
+.file-button input {
+  display: none;
+}
+
+.import-uploader span,
+.import-preview-heading span,
+.import-preview-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.import-textarea {
+  margin-bottom: 12px;
+}
+
+.import-preview-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.import-preview-heading button {
+  min-height: 30px;
+}
+
+.import-preview-list {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.import-preview-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+  border: 1px solid rgba(94, 72, 43, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.72);
+  padding: 9px;
+}
+
+.import-preview-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(96px, 0.65fr) minmax(90px, 0.55fr) minmax(118px, 0.75fr);
+  gap: 8px;
+}
+
+.import-preview-note {
+  grid-column: 2;
+  margin-top: -2px;
+  overflow-wrap: anywhere;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -796,7 +889,7 @@ button:disabled {
 }
 
 .selectable-item {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .readonly-item {
@@ -814,6 +907,11 @@ button:disabled {
   width: 16px;
   min-height: 16px;
   accent-color: var(--primary);
+}
+
+.selectable-title-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
 .item-amount {
@@ -1276,6 +1374,8 @@ button:disabled {
   .inline-form,
   .form-footer,
   .form-grid,
+  .import-uploader,
+  .import-preview-fields,
   .ledger-item,
   .trip-card,
   .roster-row,
@@ -1292,6 +1392,14 @@ button:disabled {
   .detail-line > div:last-child {
     justify-content: flex-start;
     text-align: left;
+  }
+
+  .import-preview-row {
+    grid-template-columns: 1fr;
+  }
+
+  .import-preview-note {
+    grid-column: 1;
   }
 
   .home-console,

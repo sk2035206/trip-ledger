@@ -66,6 +66,7 @@ type SharedExpenseRow = RowDataPacket & {
   title: string;
   category_name: string;
   amount: number | string;
+  bill_time: string | null;
   payer_person_id: string | null;
   note: string | null;
 };
@@ -143,6 +144,7 @@ const schemaStatements = [
       title VARCHAR(200) NOT NULL COMMENT '费用事项名称',
       category_name VARCHAR(100) NOT NULL COMMENT '公共费用类别名称',
       amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '费用金额',
+      bill_time VARCHAR(32) NULL COMMENT '账单时间',
       payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款',
       note TEXT NULL COMMENT '备注',
       sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值',
@@ -257,6 +259,7 @@ const schemaCommentStatements = [
   "ALTER TABLE shared_expenses MODIFY title VARCHAR(200) NOT NULL COMMENT '费用事项名称'",
   "ALTER TABLE shared_expenses MODIFY category_name VARCHAR(100) NOT NULL COMMENT '公共费用类别名称'",
   "ALTER TABLE shared_expenses MODIFY amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '费用金额'",
+  "ALTER TABLE shared_expenses MODIFY bill_time VARCHAR(32) NULL COMMENT '账单时间'",
   "ALTER TABLE shared_expenses MODIFY payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款'",
   "ALTER TABLE shared_expenses MODIFY note TEXT NULL COMMENT '备注'",
   "ALTER TABLE shared_expenses MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值'",
@@ -312,6 +315,7 @@ async function initializeSchema() {
     await db.execute(statement);
   }
   await ensureSharedExpensePayerColumn(db);
+  await ensureSharedExpenseBillTimeColumn(db);
   await ensureParticipantTitleColumns(db);
   await ensureSharedParticipantMetadataColumns(db);
   await db.execute("DROP TABLE IF EXISTS adjustments");
@@ -409,6 +413,14 @@ async function ensureSharedExpensePayerColumn(db: Pool) {
 
   await db.execute(
     "ALTER TABLE shared_expenses ADD COLUMN payer_person_id VARCHAR(64) NULL COMMENT '付款人员ID，NULL表示公共付款' AFTER amount",
+  );
+}
+
+async function ensureSharedExpenseBillTimeColumn(db: Pool) {
+  if (await columnExists(db, "shared_expenses", "bill_time")) return;
+
+  await db.execute(
+    "ALTER TABLE shared_expenses ADD COLUMN bill_time VARCHAR(32) NULL COMMENT '账单时间' AFTER amount",
   );
 }
 
@@ -525,7 +537,7 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
     queryRows<SharedExpenseRow>(
       db,
       `
-        SELECT id, trip_id, title, category_name, amount, payer_person_id, note
+        SELECT id, trip_id, title, category_name, amount, bill_time, payer_person_id, note
         FROM shared_expenses
         ORDER BY trip_id, sort_order, created_at, id
       `,
@@ -591,6 +603,7 @@ async function readStateFromTables(db: Queryable): Promise<AppState> {
       title: row.title,
       category: row.category_name,
       amount: toNumber(row.amount),
+      billTime: row.bill_time ?? undefined,
       payerId: row.payer_person_id ?? undefined,
       participantIds: sharedParticipants.get(row.id) ?? [],
       note: row.note ?? undefined,
@@ -684,6 +697,7 @@ async function syncState(connection: PoolConnection, state: AppState) {
         normalizedTitle(expense.title, "未命名费用"),
         normalizedTitle(expense.category, "其他"),
         expense.amount,
+        nullableText(expense.billTime),
         memberIds.has(expense.payerId ?? "") ? expense.payerId : null,
         nullableText(expense.note),
         index,
@@ -739,13 +753,14 @@ async function syncState(connection: PoolConnection, state: AppState) {
     connection,
     `
       INSERT INTO shared_expenses
-        (id, trip_id, title, category_name, amount, payer_person_id, note, sort_order)
+        (id, trip_id, title, category_name, amount, bill_time, payer_person_id, note, sort_order)
       VALUES ?
       ON DUPLICATE KEY UPDATE
         trip_id = VALUES(trip_id),
         title = VALUES(title),
         category_name = VALUES(category_name),
         amount = VALUES(amount),
+        bill_time = VALUES(bill_time),
         payer_person_id = VALUES(payer_person_id),
         note = VALUES(note),
         sort_order = VALUES(sort_order)

@@ -4,7 +4,7 @@ import "./globals.css";
 
 const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL ?? "https://jcxxy.cn/ledger/");
 const shareTitle = "旅行分账";
-const shareDescription = "用于多人旅行公共费用、出行费用、个人费用和成员自付扣减核算的 H5 分账工具。";
+const shareDescription = "用于多人旅行公共费用、出行费用、个人费用和成员付款核算的 H5 分账工具。";
 const shareImage = new URL("/api/share-card.png", siteUrl).toString();
 
 function normalizeSiteUrl(value: string) {

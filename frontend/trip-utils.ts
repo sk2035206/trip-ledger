@@ -1,5 +1,6 @@
 import { defaultCategories, defaultState } from "./sample-data";
 import { pinyin } from "pinyin-pro";
+import { normalizeBillTime } from "./bill-time";
 import type { AppState, LedgerLine, MemberTotal, Person, Trip } from "./trip-types";
 
 export function formatMoney(value: number) {
@@ -101,6 +102,7 @@ export function migrateTripsToState(
       members: tripMembers,
       sharedExpenses: trip.sharedExpenses.map((item) => ({
         ...item,
+        billTime: item.billTime ? normalizeBillTime(item.billTime) || undefined : undefined,
         payerId: item.payerId ? (idMap.get(item.payerId) ?? item.payerId) : undefined,
         participantIds: replaceIds(item.participantIds, idMap),
       })),

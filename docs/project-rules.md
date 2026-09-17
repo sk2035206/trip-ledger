@@ -273,6 +273,6 @@ NEXT_PUBLIC_WECHAT_SIGNATURE_URL=https://jcxxy.cn/gzh/api/wechat/signature
 ## 12. 文件与缓存说明
 
 - `tsconfig.tsbuildinfo` 是 TypeScript 增量编译缓存，已加入 `.gitignore`。
-- `.openai/hosting.json` 当前仅保留为空文件，不声明 D1/R2 绑定。
-- 当前项目不使用 Cloudflare Worker、D1、R2。
-- 本项目之前已删除 `drizzle`、`examples`、`worker` 相关目录；不要再引入这些作为默认方案。
+- 当前项目不使用 Cloudflare Worker、D1、R2，也不使用 Wrangler 绑定配置。
+- 已删除 `drizzle`、`examples`、`worker`、`.openai/hosting.json` 和 `app/chatgpt-auth.ts` 等模板残留；不要再引入这些作为默认方案。
+- 数据库访问统一走 `server/mysql/` 的 `mysql2` 连接池与手写 SQL，不引入 ORM 或迁移工具。

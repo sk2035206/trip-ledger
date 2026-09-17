@@ -463,6 +463,12 @@ function ReadonlySharedList({ trip, items }: { trip: Trip; items: SharedExpense[
             <div className="ledger-meta-grid">
               <span>付款人</span>
               <b>{item.payerId ? getMemberName(trip, item.payerId) : "公共"}</b>
+              {item.billTime && (
+                <>
+                  <span>账单时间</span>
+                  <b>{item.billTime}</b>
+                </>
+              )}
               <span>分摊人</span>
               <b>{item.participantIds.map((id) => getMemberName(trip, id)).join("、")}</b>
             </div>

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import { WechatShare } from "./wechat-share";
 import { loadRemoteState, saveRemoteState } from "@/frontend/api-client";
+import { normalizeBillTime, toBillTimeInputValue } from "@/frontend/bill-time";
+import { parseLedgerImportText, type LedgerImportDraft } from "@/frontend/ledger-import";
 import { defaultCategories, defaultState } from "@/frontend/sample-data";
 import type {
   AppState,
@@ -43,7 +45,7 @@ const wechatSignatureUrl =
 const topViews: TopView[] = ["workbench", "trips", "people", "categories", "ledger"];
 const ledgerTabs: LedgerTab[] = ["overview", "members", "shared", "travel", "personal", "settlement", "memberDetail"];
 
-type CreateModal = "trip" | "person" | "category" | "tripMember" | "sharedBulk";
+type CreateModal = "trip" | "person" | "category" | "tripMember" | "sharedBulk" | "expenseImport";
 type EntryForm = "shared" | "travel" | "personal";
 type LedgerHistoryState = {
   activeView: TopView;
@@ -92,6 +94,7 @@ export default function Home() {
   const [sharedForm, setSharedForm] = useState({
     title: "",
     amount: "",
+    billTime: "",
     category: defaultCategories[1],
     payerId: "",
     participantIds: defaultState.trips[0].members.map((member) => member.id),
@@ -114,6 +117,11 @@ export default function Home() {
     category: defaultCategories[0],
     participantIds: defaultState.trips[0].members.map((member) => member.id),
   });
+  const [importText, setImportText] = useState("");
+  const [importDrafts, setImportDrafts] = useState<LedgerImportDraft[]>([]);
+  const [importStatus, setImportStatus] = useState("");
+  const [isRecognizingImport, setIsRecognizingImport] = useState(false);
+  const [importParticipantIds, setImportParticipantIds] = useState(defaultState.trips[0].members.map((member) => member.id));
   const hasLoadedRemote = useRef(false);
   const skipNextSave = useRef(false);
   const historyReadyRef = useRef(false);
@@ -238,6 +246,7 @@ export default function Home() {
         category: appState.categories.includes(form.category) ? form.category : appState.categories[0] ?? "其他",
         participantIds: form.participantIds.filter((id) => allMemberIds.includes(id)),
       }));
+      setImportParticipantIds((ids) => ids.filter((id) => allMemberIds.includes(id)));
       setSelectedMemberId((id) => (allMemberIds.includes(id) ? id : firstMemberId));
     }, 0);
     return () => window.clearTimeout(timer);
@@ -618,12 +627,13 @@ export default function Home() {
   }
 
   function addSharedExpense() {
-    const amount = Number(sharedForm.amount);
+    const amount = Math.abs(Number(sharedForm.amount));
     const title = sharedForm.title.trim();
     if (!title || !amount || sharedForm.participantIds.length === 0) return;
     const payload = {
       title,
       amount,
+      billTime: normalizeBillTime(sharedForm.billTime),
       category: sharedForm.category,
       payerId: sharedForm.payerId || undefined,
       participantIds: sharedForm.participantIds,
@@ -648,7 +658,7 @@ export default function Home() {
         ],
       }));
     }
-	    setSharedForm((form) => ({ ...form, title: "", amount: "", note: "" }));
+	    setSharedForm((form) => ({ ...form, title: "", amount: "", billTime: "", note: "" }));
     setEditingEntry(null);
 	    setEntryForm(null);
 	  }
@@ -748,6 +758,18 @@ export default function Home() {
 
   const hasSelectedAllFilteredSharedExpenses =
     filteredSharedExpenses.length > 0 && filteredSharedExpenses.every((item) => selectedSharedIds.includes(item.id));
+  const importCategoryOptions = useMemo(
+    () => Array.from(new Set([...appState.categories, "其他"])),
+    [appState.categories],
+  );
+  const selectedImportDrafts = useMemo(
+    () => importDrafts.filter((draft) => draft.selected && draft.title.trim() && draft.amount > 0),
+    [importDrafts],
+  );
+  const selectedImportTotal = useMemo(
+    () => selectedImportDrafts.reduce((sum, draft) => sum + draft.amount, 0),
+    [selectedImportDrafts],
+  );
 
   function setAllParticipants(type: "shared" | "travel") {
     const allIds = currentTrip.members.map((member) => member.id);
@@ -764,6 +786,7 @@ export default function Home() {
       setSharedForm({
         title: "",
         amount: "",
+        billTime: "",
         category: appState.categories[0] ?? "其他",
         payerId: "",
         participantIds: currentTrip.members.map((member) => member.id),
@@ -795,6 +818,7 @@ export default function Home() {
     setSharedForm({
       title: item.title,
       amount: String(item.amount),
+      billTime: item.billTime ?? "",
       category: item.category,
       payerId: item.payerId ?? "",
       participantIds: item.participantIds,
@@ -835,6 +859,23 @@ export default function Home() {
     setCreateModal("sharedBulk");
   }
 
+  function openImportModal() {
+    setImportText("");
+    setImportDrafts([]);
+    setImportStatus("");
+    setIsRecognizingImport(false);
+    setImportParticipantIds(currentTrip.members.map((member) => member.id));
+    setCreateModal("expenseImport");
+  }
+
+  function closeImportModal() {
+    setImportText("");
+    setImportDrafts([]);
+    setImportStatus("");
+    setIsRecognizingImport(false);
+    setCreateModal(null);
+  }
+
   function applyBulkSharedUpdate() {
     if (selectedSharedIds.length === 0 || bulkSharedForm.participantIds.length === 0) return;
     updateTrip((trip) => ({
@@ -851,6 +892,68 @@ export default function Home() {
     }));
     setSelectedSharedIds([]);
     setCreateModal(null);
+  }
+
+  async function importLedgerImage(file: File) {
+    setIsRecognizingImport(true);
+    setImportStatus("图片识别中 0%");
+    try {
+      const text = await recognizeLedgerImage(file, (message) => setImportStatus(message));
+      const drafts = parseLedgerImportText(text, importCategoryOptions);
+      setImportText(text);
+      setImportDrafts(drafts);
+      setImportStatus(drafts.length ? `已识别 ${drafts.length} 项` : "未识别到可导入项目");
+    } catch (error) {
+      console.error("[trip-ledger] 图片识别失败", error);
+      setImportStatus("识别失败，可粘贴文本后解析");
+    } finally {
+      setIsRecognizingImport(false);
+    }
+  }
+
+  function handleImportTextChange(value: string) {
+    setImportText(value);
+    const drafts = parseLedgerImportText(value, importCategoryOptions);
+    setImportDrafts(drafts);
+    setImportStatus(drafts.length ? `已解析 ${drafts.length} 项` : "");
+  }
+
+  function updateImportDraft(id: string, patch: Partial<LedgerImportDraft>) {
+    setImportDrafts((drafts) => drafts.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)));
+  }
+
+  function toggleAllImportDrafts() {
+    const shouldSelectAll = selectedImportDrafts.length !== importDrafts.length;
+    setImportDrafts((drafts) => drafts.map((draft) => ({ ...draft, selected: shouldSelectAll })));
+  }
+
+  function applyExpenseImport() {
+    if (selectedImportDrafts.length === 0 || importParticipantIds.length === 0) return;
+    const importedExpenses = selectedImportDrafts.map((draft, index) => ({
+      id: `${uid("shared-import")}-${index}`,
+      title: draft.title.trim(),
+      amount: Math.abs(draft.amount),
+      billTime: normalizeBillTime(draft.billTime),
+      category: draft.category || "其他",
+      participantIds: importParticipantIds,
+      note: draft.note,
+    }));
+
+    setAppState((state) => {
+      const categorySet = new Set(state.categories);
+      importedExpenses.forEach((expense) => categorySet.add(expense.category));
+      return {
+        ...state,
+        categories: Array.from(categorySet),
+        trips: state.trips.map((trip) =>
+          trip.id === currentTrip.id
+            ? { ...trip, sharedExpenses: [...importedExpenses, ...trip.sharedExpenses] }
+            : trip,
+        ),
+      };
+    });
+    setSharedCategoryFilter("全部");
+    closeImportModal();
   }
 
   function openMemberDetail(memberId: string) {
@@ -1108,9 +1211,14 @@ export default function Home() {
 	              <Panel title="公共费用清单" kicker={`${filteredSharedExpenses.length}/${currentTrip.sharedExpenses.length} 项`}>
 	                <div className="list-toolbar">
 	                  <span>成员付款会自动抵扣最终应付</span>
-	                  <button type="button" onClick={() => openCreateEntry("shared")}>
-	                    新增公费
-	                  </button>
+                    <div className="toolbar-actions">
+                      <button type="button" className="ghost-button" onClick={openImportModal}>
+                        导入截图
+                      </button>
+	                    <button type="button" onClick={() => openCreateEntry("shared")}>
+	                      新增公费
+	                    </button>
+                    </div>
 	                </div>
 	                <CategoryFilter
 	                  categories={sharedCategoryOptions}
@@ -1369,6 +1477,109 @@ export default function Home() {
         </Modal>
       )}
 
+      {createModal === "expenseImport" && (
+        <Modal title="导入账单截图" kicker="公费导入" onClose={closeImportModal}>
+          <div className="import-uploader">
+            <label className="file-button">
+              选择图片
+              <input
+                type="file"
+                accept="image/*"
+                disabled={isRecognizingImport}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void importLedgerImage(file);
+                }}
+              />
+            </label>
+            <span>{importStatus || "等待导入"}</span>
+          </div>
+          <textarea
+            className="import-textarea"
+            value={importText}
+            onChange={(event) => handleImportTextChange(event.target.value)}
+            placeholder="识别文本"
+            rows={6}
+          />
+          <div className="import-preview-heading">
+            <span>{importDrafts.length ? `${importDrafts.length} 项待确认` : "暂无待确认项目"}</span>
+            {importDrafts.length > 0 && (
+              <button type="button" className="ghost-button" onClick={toggleAllImportDrafts}>
+                {selectedImportDrafts.length === importDrafts.length ? "取消全选" : "全选"}
+              </button>
+            )}
+          </div>
+          {importDrafts.length > 0 ? (
+            <div className="import-preview-list">
+              {importDrafts.map((draft) => (
+                <article className="import-preview-row" key={draft.id}>
+                  <label className="item-check" aria-label={`选择导入${draft.title}`}>
+                    <input
+                      type="checkbox"
+                      checked={draft.selected}
+                      onChange={() => updateImportDraft(draft.id, { selected: !draft.selected })}
+                    />
+                  </label>
+                  <div className="import-preview-fields">
+                    <input
+                      value={draft.title}
+                      onChange={(event) => updateImportDraft(draft.id, { title: event.target.value })}
+                      aria-label="导入事项"
+                    />
+                    <select
+                      value={draft.category}
+                      onChange={(event) => updateImportDraft(draft.id, { category: event.target.value })}
+                      aria-label="事项类型"
+                    >
+                      {importCategoryOptions.map((category) => (
+                        <option key={category}>{category}</option>
+                      ))}
+                    </select>
+                    <input
+                      inputMode="decimal"
+                      value={String(draft.amount)}
+                      onChange={(event) => updateImportDraft(draft.id, { amount: Number(event.target.value) })}
+                      aria-label="导入金额"
+                    />
+                    <input
+                      type="date"
+                      value={toBillTimeInputValue(draft.billTime)}
+                      onChange={(event) => updateImportDraft(draft.id, { billTime: normalizeBillTime(event.target.value) })}
+                      aria-label="账单时间"
+                    />
+                  </div>
+                  <span className="import-preview-note">{draft.note || `识别类型：${draft.rawType}`}</span>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <Empty text="选择图片或粘贴文本后会生成导入项目" />
+          )}
+          <ParticipantPicker
+            members={currentTrip.members}
+            selectedIds={importParticipantIds}
+            onToggle={(id) => setImportParticipantIds((ids) => toggleIds(ids, id))}
+            onSelectAll={() => setImportParticipantIds(currentTrip.members.map((member) => member.id))}
+          />
+          <div className="form-footer">
+            <span>
+              已选 {selectedImportDrafts.length} 项 / 合计 {formatMoney(selectedImportTotal)}
+            </span>
+            <button type="button" className="ghost-button" onClick={closeImportModal}>
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={selectedImportDrafts.length === 0 || importParticipantIds.length === 0}
+              onClick={applyExpenseImport}
+            >
+              导入公费
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {tripPendingDeletion && (
         <Modal title="删除账单" kicker="确认操作" onClose={() => setTripPendingDeletion(null)}>
           <p className="modal-message">
@@ -1406,6 +1617,14 @@ export default function Home() {
               value={sharedForm.amount}
               onChange={(event) => setSharedForm((form) => ({ ...form, amount: event.target.value }))}
               placeholder="金额"
+            />
+            <input
+              type="date"
+              value={toBillTimeInputValue(sharedForm.billTime)}
+              onChange={(event) =>
+                setSharedForm((form) => ({ ...form, billTime: normalizeBillTime(event.target.value) }))
+              }
+              aria-label="账单时间"
             />
             <select
               value={sharedForm.category}
@@ -1631,6 +1850,98 @@ function isLedgerHistoryState(value: unknown): value is LedgerHistoryState {
 
 function normalizeSiteUrl(value: string) {
   return value.endsWith("/") ? value : `${value}/`;
+}
+
+async function recognizeLedgerImage(file: File, onProgress: (message: string) => void) {
+  const [{ createWorker, OEM, PSM }, image] = await Promise.all([
+    import("tesseract.js"),
+    prepareImageForOcr(file),
+  ]);
+  const worker = await createWorker("chi_sim+eng", OEM.LSTM_ONLY, {
+    logger: (message) => {
+      if (!message.status) return;
+      const progress = Number.isFinite(message.progress) ? ` ${Math.round(message.progress * 100)}%` : "";
+      onProgress(`${formatOcrStatus(message.status)}${progress}`);
+    },
+  });
+
+  try {
+    await worker.setParameters({
+      preserve_interword_spaces: "1",
+      tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+      user_defined_dpi: "300",
+    });
+    onProgress("正在读取文字");
+    const result = await worker.recognize(image);
+    return result.data.text;
+  } finally {
+    await worker.terminate();
+  }
+}
+
+async function prepareImageForOcr(file: File): Promise<Blob | File> {
+  const image = await loadImageFile(file);
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  if (!width || !height) return file;
+
+  const scale = Math.min(3, Math.max(1, 1600 / width));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) return file;
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+    const gray = chroma > 42 ? 255 : Math.round(red * 0.299 + green * 0.587 + blue * 0.114);
+    const value = gray < 225 ? 0 : 255;
+    pixels[index] = value;
+    pixels[index + 1] = value;
+    pixels[index + 2] = value;
+    pixels[index + 3] = 255;
+  }
+  context.putImageData(imageData, 0, 0);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob ?? file), "image/png");
+  });
+}
+
+function loadImageFile(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("图片读取失败"));
+    };
+    image.src = url;
+  });
+}
+
+function formatOcrStatus(status: string) {
+  const statusMap: Record<string, string> = {
+    "loading tesseract core": "加载识别引擎",
+    "initializing tesseract": "初始化识别引擎",
+    "loading language traineddata": "加载中文识别库",
+    "initializing api": "准备识别",
+    "recognizing text": "识别文字",
+  };
+  return statusMap[status] ?? status;
 }
 
 function Modal({
@@ -2099,21 +2410,23 @@ function ExpenseList({
     <div className="item-list">
 	      {items.map((item) => (
 	        <article className="ledger-item selectable-item" key={item.id}>
-            <label className="item-check" aria-label={`选择${item.title}`}>
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(item.id)}
-                onChange={() => onToggleSelect(item.id)}
-              />
-            </label>
 	          <div className="ledger-main">
-	            <div className="ledger-title-row">
+	            <div className="ledger-title-row selectable-title-row">
+	              <label className="item-check" aria-label={`选择${item.title}`}>
+	                <input
+	                  type="checkbox"
+	                  checked={selectedIds.includes(item.id)}
+	                  onChange={() => onToggleSelect(item.id)}
+	                />
+	              </label>
 	              <strong>{item.title}</strong>
 	              <span className="type-tag">{item.category}</span>
 	            </div>
 	            <div className="ledger-meta-grid">
 	              <span>付款人</span>
 	              <b>{item.payerId ? getMemberName(trip, item.payerId) : "公共"}</b>
+	              <span>账单时间</span>
+	              <b>{item.billTime || "未记录"}</b>
 	              <span>分摊人</span>
 	              <b>{item.participantIds.map((id) => getMemberName(trip, id)).join("、")}</b>
 	            </div>

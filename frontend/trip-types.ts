@@ -11,6 +11,7 @@ export type SharedExpense = {
   title: string;
   category: string;
   amount: number;
+  billTime?: string;
   payerId?: string;
   participantIds: string[];
   note?: string;
