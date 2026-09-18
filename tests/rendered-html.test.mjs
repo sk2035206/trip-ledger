@@ -34,6 +34,26 @@ test("builds the trip ledger app", async () => {
   assert.doesNotMatch(page, /Your site is taking shape|Building your site/);
 });
 
+test("guards every destructive action with a confirmation dialog", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  // 账单、成员、公费/出行/个人、人员、类别删除都要先确认
+  assert.match(page, /tripPendingDeletion/);
+  assert.match(page, /memberPendingRemoval/);
+  assert.match(page, /pendingDelete/);
+  assert.match(page, /confirmPendingDelete/);
+  assert.match(page, /确认删除/);
+  assert.match(page, /确认移除/);
+
+  // 三类费用清单不再直接删除，必须先请求确认
+  assert.doesNotMatch(page, /onDelete=\{\(id\) => deleteItem\(/);
+  assert.match(page, /onDelete=\{requestSharedExpenseDelete\}/);
+  assert.match(page, /onDelete=\{requestTravelCostDelete\}/);
+  assert.match(page, /onDelete=\{requestPersonalExpenseDelete\}/);
+  assert.match(page, /onDelete=\{requestRosterPersonDelete\}/);
+  assert.match(page, /onDelete=\{requestCategoryDelete\}/);
+});
+
 test("removes starter preview dependencies and files", async () => {
   const [page, layout, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateTrip,
+  canRemoveTripMember,
   createReadableId,
   getTripCategoryTotals,
   getTripExpenseTypeTotals,
+  getTripMemberRemovalImpact,
+  getTripMemberUsage,
   normalizeAppState,
+  removeTripMember,
   toPinyinSlug,
 } from "../frontend/trip-utils.ts";
 import { parseLedgerImportText, resolveLedgerImportCategory } from "../frontend/ledger-import.ts";
@@ -225,4 +229,139 @@ test("normalizes bill date and fills a missing year", () => {
 test("defaults unmatched import categories to other", () => {
   assert.equal(resolveLedgerImportCategory("纪念购物", "不明商家", ["酒店", "吃玩", "交通", "门票", "其他"]), "其他");
   assert.equal(resolveLedgerImportCategory("美食特产", "醉湘楼", ["酒店", "吃玩", "交通", "门票", "其他"]), "吃玩");
+});
+
+function createMemberUsageTrip() {
+  return {
+    id: "trip-member-usage",
+    title: "移除人员判断",
+    dates: "2026",
+    members: [
+      { id: "used", name: "被使用" },
+      { id: "payer", name: "仅付款" },
+      { id: "traveler", name: "仅出行" },
+      { id: "personal", name: "仅个人" },
+      { id: "idle", name: "未使用" },
+    ],
+    sharedExpenses: [
+      {
+        id: "shared-1",
+        title: "酒店",
+        category: "酒店",
+        amount: 200,
+        payerId: "payer",
+        participantIds: ["used"],
+      },
+    ],
+    travelCosts: [
+      {
+        id: "travel-1",
+        title: "车票",
+        amount: 100,
+        participantIds: ["traveler"],
+      },
+    ],
+    personalExpenses: [
+      {
+        id: "personal-1",
+        memberId: "personal",
+        title: "个人餐食",
+        amount: 30,
+      },
+    ],
+  };
+}
+
+test("flags every expense kind that references a trip member before removal", () => {
+  const trip = createMemberUsageTrip();
+
+  assert.equal(canRemoveTripMember(trip, "used"), false);
+  assert.equal(canRemoveTripMember(trip, "payer"), false);
+  assert.equal(canRemoveTripMember(trip, "traveler"), false);
+  assert.equal(canRemoveTripMember(trip, "personal"), false);
+
+  assert.deepEqual(getTripMemberUsage(trip, "used"), {
+    sharedAsParticipant: 1,
+    sharedAsPayer: 0,
+    travelAsParticipant: 0,
+    personal: 0,
+    total: 1,
+  });
+  assert.deepEqual(
+    getTripMemberRemovalImpact(trip, "used").map((item) => [item.label, item.count]),
+    [["公共费用分摊", 1]],
+  );
+  assert.deepEqual(
+    getTripMemberRemovalImpact(trip, "payer").map((item) => [item.label, item.count]),
+    [["公共费用付款", 1]],
+  );
+  assert.deepEqual(
+    getTripMemberRemovalImpact(trip, "traveler").map((item) => [item.label, item.count]),
+    [["出行费用分摊", 1]],
+  );
+  assert.deepEqual(
+    getTripMemberRemovalImpact(trip, "personal").map((item) => [item.label, item.count]),
+    [["个人费用", 1]],
+  );
+});
+
+test("lists every affected expense kind of a member in the confirm dialog", () => {
+  const trip = createMemberUsageTrip();
+  trip.sharedExpenses.push({
+    id: "shared-2",
+    title: "门票",
+    category: "门票",
+    amount: 80,
+    payerId: "used",
+    participantIds: ["used"],
+  });
+
+  assert.deepEqual(getTripMemberUsage(trip, "used"), {
+    sharedAsParticipant: 2,
+    sharedAsPayer: 1,
+    travelAsParticipant: 0,
+    personal: 0,
+    total: 3,
+  });
+
+  const impact = getTripMemberRemovalImpact(trip, "used");
+  assert.deepEqual(
+    impact.map((item) => [item.label, item.count]),
+    [
+      ["公共费用分摊", 2],
+      ["公共费用付款", 1],
+    ],
+  );
+  assert.ok(impact.every((item) => item.detail.length > 0));
+});
+
+test("allows removing an unused trip member without touching other records", () => {
+  const trip = createMemberUsageTrip();
+
+  assert.equal(canRemoveTripMember(trip, "idle"), true);
+  assert.deepEqual(getTripMemberRemovalImpact(trip, "idle"), []);
+
+  const nextTrip = removeTripMember(trip, "idle");
+
+  assert.deepEqual(nextTrip.members.map((member) => member.id), ["used", "payer", "traveler", "personal"]);
+  assert.deepEqual(nextTrip.sharedExpenses, trip.sharedExpenses);
+  assert.deepEqual(nextTrip.travelCosts, trip.travelCosts);
+  assert.deepEqual(nextTrip.personalExpenses, trip.personalExpenses);
+});
+
+test("confirming removal re-splits expenses and drops personal records", () => {
+  const trip = createMemberUsageTrip();
+
+  const afterParticipant = removeTripMember(trip, "used");
+  assert.deepEqual(afterParticipant.members.map((member) => member.id), ["payer", "traveler", "personal", "idle"]);
+  assert.deepEqual(afterParticipant.sharedExpenses[0].participantIds, []);
+  assert.equal(afterParticipant.sharedExpenses[0].amount, 200);
+
+  const afterPayer = removeTripMember(trip, "payer");
+  assert.equal(afterPayer.sharedExpenses[0].payerId, undefined);
+  assert.equal(calculateTrip(afterPayer).paidTotal, 0);
+
+  const afterPersonal = removeTripMember(trip, "personal");
+  assert.deepEqual(afterPersonal.personalExpenses, []);
+  assert.equal(calculateTrip(afterPersonal).personalTotal, 0);
 });

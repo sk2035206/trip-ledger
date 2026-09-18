@@ -1101,6 +1101,41 @@ button:disabled {
   line-height: 1.65;
 }
 
+.impact-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.impact-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid rgba(164, 61, 47, 0.22);
+  border-radius: 6px;
+  background: rgba(164, 61, 47, 0.06);
+}
+
+.impact-list strong {
+  color: var(--danger);
+  font-size: 0.92rem;
+}
+
+.impact-list span {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.delete-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
 .summary-table {
   overflow-x: auto;
   border: 1px solid rgba(94, 72, 43, 0.18);

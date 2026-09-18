@@ -22,6 +22,8 @@ import type {
 import {
   calculateGlobal,
   calculateTrip,
+  canRemoveTripMember,
+  createReadableId,
   formatMoney,
   getGlobalCategoryTotals,
   getGlobalExpenseTypeTotals,
@@ -29,7 +31,8 @@ import {
   getMemberLedgerItems,
   getMemberName,
   getTripCategoryTotals,
-  createReadableId,
+  getTripMemberRemovalImpact,
+  getTripMemberUsage,
   removeTripMember,
   splitAmount,
   uid,
@@ -47,6 +50,21 @@ const ledgerTabs: LedgerTab[] = ["overview", "members", "shared", "travel", "per
 
 type CreateModal = "trip" | "person" | "category" | "tripMember" | "sharedBulk" | "expenseImport";
 type EntryForm = "shared" | "travel" | "personal";
+type DeleteKind = "sharedExpenses" | "travelCosts" | "personalExpenses" | "person" | "category";
+type PendingDelete = {
+  kind: DeleteKind;
+  id: string;
+  label: string;
+  meta?: string;
+  note: string;
+};
+const deleteKindLabels: Record<DeleteKind, string> = {
+  sharedExpenses: "公共费用",
+  travelCosts: "出行费用",
+  personalExpenses: "个人费用",
+  person: "人员",
+  category: "类别",
+};
 type LedgerHistoryState = {
   activeView: TopView;
   tripId: string;
@@ -84,6 +102,8 @@ export default function Home() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedSharedIds, setSelectedSharedIds] = useState<string[]>([]);
   const [tripPendingDeletion, setTripPendingDeletion] = useState<Trip | null>(null);
+  const [memberPendingRemoval, setMemberPendingRemoval] = useState<Member | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultState.trips[0].members[0].id);
   const [detailFilter, setDetailFilter] = useState("全部");
   const [sharedCategoryFilter, setSharedCategoryFilter] = useState("全部");
@@ -170,7 +190,19 @@ export default function Home() {
     if (sharedCategoryFilter === "全部") return currentTrip.sharedExpenses;
     return currentTrip.sharedExpenses.filter((item) => item.category === sharedCategoryFilter);
   }, [currentTrip.sharedExpenses, sharedCategoryFilter]);
-  const activeOverlay = createModal ?? entryForm ?? (tripPendingDeletion ? "tripDelete" : null);
+  const activeOverlay =
+    createModal ??
+    entryForm ??
+    (tripPendingDeletion
+      ? "tripDelete"
+      : memberPendingRemoval
+        ? "memberRemove"
+        : pendingDelete
+          ? "pendingDelete"
+          : null);
+  const memberRemovalImpact = memberPendingRemoval
+    ? getTripMemberRemovalImpact(currentTrip, memberPendingRemoval.id)
+    : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -376,6 +408,8 @@ export default function Home() {
         setEntryForm(null);
         setEditingEntry(null);
         setTripPendingDeletion(null);
+        setMemberPendingRemoval(null);
+        setPendingDelete(null);
         return;
       }
 
@@ -553,13 +587,16 @@ export default function Home() {
     setCreateModal(null);
   }
 
-  function deleteRosterPerson(personId: string) {
-    const isUsed = appState.trips.some((trip) => trip.members.some((member) => member.id === personId));
-    if (isUsed) return;
-    setAppState((state) => {
-      const nextState = { ...state, people: state.people.filter((person) => person.id !== personId) };
-      persistImmediately(nextState);
-      return nextState;
+  function requestRosterPersonDelete(personId: string) {
+    const person = appState.people.find((item) => item.id === personId);
+    if (!person) return;
+    if (appState.trips.some((trip) => trip.members.some((member) => member.id === personId))) return;
+    setPendingDelete({
+      kind: "person",
+      id: personId,
+      label: person.name,
+      meta: "全局人员库",
+      note: "删除后该人员不再出现在人员库中；已被账单使用的人员不可删除。",
     });
   }
 
@@ -600,7 +637,21 @@ export default function Home() {
   }
 
   function removeMemberFromTrip(personId: string) {
+    const member = currentTrip.members.find((item) => item.id === personId);
+    if (!member) return;
+    if (!canRemoveTripMember(currentTrip, personId)) {
+      setMemberPendingRemoval(member);
+      return;
+    }
     updateTrip((trip) => removeTripMember(trip, personId), true);
+  }
+
+  function confirmMemberRemoval() {
+    if (!memberPendingRemoval) return;
+    const memberId = memberPendingRemoval.id;
+    setMemberPendingRemoval(null);
+    if (!currentTrip.members.some((member) => member.id === memberId)) return;
+    updateTrip((trip) => removeTripMember(trip, memberId), true);
   }
 
   function addCategory() {
@@ -614,15 +665,17 @@ export default function Home() {
     setCreateModal(null);
   }
 
-  function deleteCategory(name: string) {
+  function requestCategoryDelete(name: string) {
     const isUsed = appState.trips.some((trip) =>
       trip.sharedExpenses.some((item) => item.category === name),
     );
     if (isUsed) return;
-    setAppState((state) => {
-      const nextState = { ...state, categories: state.categories.filter((category) => category !== name) };
-      persistImmediately(nextState);
-      return nextState;
+    setPendingDelete({
+      kind: "category",
+      id: name,
+      label: name,
+      meta: "公共费用类别",
+      note: "删除后该类别不再出现在公共费用分类选项中；已被公共费用使用的类别不可删除。",
     });
   }
 
@@ -739,6 +792,68 @@ export default function Home() {
         [collection]: value.filter((item) => "id" in item && item.id !== itemId),
       };
     }, true);
+  }
+
+  function requestSharedExpenseDelete(id: string) {
+    const item = currentTrip.sharedExpenses.find((entry) => entry.id === id);
+    if (!item) return;
+    setPendingDelete({
+      kind: "sharedExpenses",
+      id,
+      label: item.title,
+      meta: `${item.category} · ${formatMoney(item.amount)}`,
+      note: "删除后该项不再计入公共总费用，相关成员的公共分摊会重新计算。",
+    });
+  }
+
+  function requestTravelCostDelete(id: string) {
+    const item = currentTrip.travelCosts.find((entry) => entry.id === id);
+    if (!item) return;
+    setPendingDelete({
+      kind: "travelCosts",
+      id,
+      label: item.title,
+      meta: formatMoney(item.amount),
+      note: "删除后该项不再计入出行费用，相关成员的出行分摊会重新计算。",
+    });
+  }
+
+  function requestPersonalExpenseDelete(id: string) {
+    const item = currentTrip.personalExpenses.find((entry) => entry.id === id);
+    if (!item) return;
+    setPendingDelete({
+      kind: "personalExpenses",
+      id,
+      label: item.title,
+      meta: `${getMemberName(currentTrip, item.memberId)} · ${formatMoney(item.amount)}`,
+      note: "删除后该项不再计入该成员的个人合计，公共总费用不受影响。",
+    });
+  }
+
+  function confirmPendingDelete() {
+    if (!pendingDelete) return;
+    const { kind, id } = pendingDelete;
+    setPendingDelete(null);
+
+    if (kind === "sharedExpenses" || kind === "travelCosts" || kind === "personalExpenses") {
+      deleteItem(kind, id);
+      return;
+    }
+
+    if (kind === "person") {
+      setAppState((state) => {
+        const nextState = { ...state, people: state.people.filter((person) => person.id !== id) };
+        persistImmediately(nextState);
+        return nextState;
+      });
+      return;
+    }
+
+    setAppState((state) => {
+      const nextState = { ...state, categories: state.categories.filter((category) => category !== id) };
+      persistImmediately(nextState);
+      return nextState;
+    });
   }
 
   function toggleIds(ids: string[], id: string) {
@@ -1111,7 +1226,7 @@ export default function Home() {
         <section className="content-grid">
           <Panel title="人员管理" kicker="全局人员库">
             <div className="list-toolbar">
-              <span>人员只在这里维护，账单内从人员库选择</span>
+              <span>维护全局人员，是账单内人员选择的来源</span>
               <button type="button" onClick={() => setCreateModal("person")}>
                 新增人员
               </button>
@@ -1119,7 +1234,7 @@ export default function Home() {
             <RosterList
               people={appState.people}
               trips={appState.trips}
-              onDelete={deleteRosterPerson}
+              onDelete={requestRosterPersonDelete}
             />
           </Panel>
 
@@ -1141,7 +1256,7 @@ export default function Home() {
             <CategoryManager
               categories={appState.categories}
               trips={appState.trips}
-              onDelete={deleteCategory}
+              onDelete={requestCategoryDelete}
             />
           </Panel>
 
@@ -1196,12 +1311,12 @@ export default function Home() {
             <section className="content-grid">
               <Panel title="本次人员列表" kicker={`${currentTrip.members.length} 人`}>
                 <div className="list-toolbar">
-                  <span>本页只维护当前账单成员，新增人员从公共人员库选择</span>
+                  <span>只维护当前账单成员，仅支持从人员库添加</span>
                   <button type="button" onClick={() => setCreateModal("tripMember")}>
                     新增人员
                   </button>
                 </div>
-                <CurrentTripMembers members={currentTrip.members} onRemove={removeMemberFromTrip} />
+                <CurrentTripMembers trip={currentTrip} onRemove={removeMemberFromTrip} />
               </Panel>
             </section>
           )}
@@ -1241,7 +1356,7 @@ export default function Home() {
                     selectedIds={selectedSharedIds}
                     onToggleSelect={(id) => setSelectedSharedIds((ids) => toggleIds(ids, id))}
                     onEdit={openEditSharedExpense}
-	                  onDelete={(id) => deleteItem("sharedExpenses", id)}
+	                  onDelete={requestSharedExpenseDelete}
 	                />
 	              </Panel>
 
@@ -1261,7 +1376,7 @@ export default function Home() {
 	                  trip={currentTrip}
 	                  items={currentTrip.travelCosts}
                     onEdit={openEditTravelCost}
-	                  onDelete={(id) => deleteItem("travelCosts", id)}
+	                  onDelete={requestTravelCostDelete}
 	                />
 	              </Panel>
 
@@ -1281,7 +1396,7 @@ export default function Home() {
 	                  trip={currentTrip}
 	                  items={currentTrip.personalExpenses}
                     onEdit={openEditPersonalExpense}
-	                  onDelete={(id) => deleteItem("personalExpenses", id)}
+	                  onDelete={requestPersonalExpenseDelete}
 	                />
 	              </Panel>
 
@@ -1591,6 +1706,56 @@ export default function Home() {
               取消
             </button>
             <button type="button" className="danger-button" onClick={confirmTripDelete}>
+              确认删除
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {memberPendingRemoval && (
+        <Modal title="移除人员" kicker="确认操作" onClose={() => setMemberPendingRemoval(null)}>
+          <p className="modal-message">
+            确认从“{currentTrip.title}”移除“{memberPendingRemoval.name}”？
+          </p>
+          <ul className="impact-list">
+            {memberRemovalImpact.map((item) => (
+              <li key={item.key}>
+                <strong>
+                  {item.label} {item.count} 项
+                </strong>
+                <span>{item.detail}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="form-footer">
+            <span>移除后该成员不再参与本次账单计算，也不会从全局人员库删除。</span>
+            <button type="button" className="ghost-button" onClick={() => setMemberPendingRemoval(null)}>
+              取消
+            </button>
+            <button type="button" className="danger-button" onClick={confirmMemberRemoval}>
+              确认移除
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {pendingDelete && (
+        <Modal
+          title={`删除${deleteKindLabels[pendingDelete.kind]}`}
+          kicker="确认操作"
+          onClose={() => setPendingDelete(null)}
+        >
+          <p className="modal-message">
+            确认删除“{pendingDelete.label}”
+            {pendingDelete.meta ? `（${pendingDelete.meta}）` : ""}？
+          </p>
+          <p className="delete-note">{pendingDelete.note}</p>
+          <div className="form-footer">
+            <span>删除后不可恢复。</span>
+            <button type="button" className="ghost-button" onClick={() => setPendingDelete(null)}>
+              取消
+            </button>
+            <button type="button" className="danger-button" onClick={confirmPendingDelete}>
               确认删除
             </button>
           </div>
@@ -2215,21 +2380,24 @@ function AvailablePeople({
   );
 }
 
-function CurrentTripMembers({ members, onRemove }: { members: Member[]; onRemove: (id: string) => void }) {
-  if (members.length === 0) return <Empty text="请从左侧人员库添加本次人员" />;
+function CurrentTripMembers({ trip, onRemove }: { trip: Trip; onRemove: (id: string) => void }) {
+  if (trip.members.length === 0) return <Empty text="请从左侧人员库添加本次人员" />;
   return (
     <div className="roster-list">
-      {members.map((member) => (
-        <article className="roster-row" key={member.id}>
-          <div>
-            <strong>{member.name}</strong>
-            <span>本次出行成员</span>
-          </div>
-          <button type="button" className="ghost-danger" onClick={() => onRemove(member.id)}>
-            移除
-          </button>
-        </article>
-      ))}
+      {trip.members.map((member) => {
+        const usage = getTripMemberUsage(trip, member.id);
+        return (
+          <article className="roster-row" key={member.id}>
+            <div>
+              <strong>{member.name}</strong>
+              <span>{usage.total > 0 ? `已被 ${usage.total} 项费用使用` : "本次出行成员"}</span>
+            </div>
+            <button type="button" className="ghost-danger" onClick={() => onRemove(member.id)}>
+              移除
+            </button>
+          </article>
+        );
+      })}
     </div>
   );
 }

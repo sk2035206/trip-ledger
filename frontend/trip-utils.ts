@@ -315,12 +315,85 @@ export function getMemberCategoryTotals(items: LedgerLine[]) {
   return Array.from(totals.entries()).map(([label, amount]) => ({ label, amount }));
 }
 
+export type TripMemberUsage = {
+  sharedAsParticipant: number;
+  sharedAsPayer: number;
+  travelAsParticipant: number;
+  personal: number;
+  total: number;
+};
+
+// 统计成员在账单内被多少项费用引用，供移除前判断占用情况。
+export function getTripMemberUsage(trip: Trip, memberId: string): TripMemberUsage {
+  const sharedAsParticipant = trip.sharedExpenses.filter((item) =>
+    item.participantIds.includes(memberId),
+  ).length;
+  const sharedAsPayer = trip.sharedExpenses.filter((item) => item.payerId === memberId).length;
+  const travelAsParticipant = trip.travelCosts.filter((item) =>
+    item.participantIds.includes(memberId),
+  ).length;
+  const personal = trip.personalExpenses.filter((item) => item.memberId === memberId).length;
+
+  return {
+    sharedAsParticipant,
+    sharedAsPayer,
+    travelAsParticipant,
+    personal,
+    total: sharedAsParticipant + sharedAsPayer + travelAsParticipant + personal,
+  };
+}
+
+export function canRemoveTripMember(trip: Trip, memberId: string) {
+  return getTripMemberUsage(trip, memberId).total === 0;
+}
+
+export type TripMemberRemovalImpact = {
+  key: string;
+  label: string;
+  detail: string;
+  count: number;
+};
+
+// 移除成员会连带改写的费用记录，用于二次确认弹窗展示影响范围。
+export function getTripMemberRemovalImpact(trip: Trip, memberId: string): TripMemberRemovalImpact[] {
+  const usage = getTripMemberUsage(trip, memberId);
+
+  return [
+    {
+      key: "sharedAsParticipant",
+      label: "公共费用分摊",
+      detail: "将从这些费用的分摊人中剔除，该项人均重新计算",
+      count: usage.sharedAsParticipant,
+    },
+    {
+      key: "sharedAsPayer",
+      label: "公共费用付款",
+      detail: "这些付款不再抵扣任何人，已付款统计随之减少",
+      count: usage.sharedAsPayer,
+    },
+    {
+      key: "travelAsParticipant",
+      label: "出行费用分摊",
+      detail: "将从这些费用的参与人员中剔除，该项人均重新计算",
+      count: usage.travelAsParticipant,
+    },
+    {
+      key: "personal",
+      label: "个人费用",
+      detail: "该成员名下的个人费用将被删除",
+      count: usage.personal,
+    },
+  ].filter((item) => item.count > 0);
+}
+
+// 仅在 canRemoveTripMember 为真或用户已确认影响后调用。
 export function removeTripMember(trip: Trip, memberId: string): Trip {
   return {
     ...trip,
     members: trip.members.filter((member) => member.id !== memberId),
     sharedExpenses: trip.sharedExpenses.map((item) => ({
       ...item,
+      payerId: item.payerId === memberId ? undefined : item.payerId,
       participantIds: item.participantIds.filter((id) => id !== memberId),
     })),
     travelCosts: trip.travelCosts.map((item) => ({
