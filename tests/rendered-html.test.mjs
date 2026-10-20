@@ -54,6 +54,59 @@ test("guards every destructive action with a confirmation dialog", async () => {
   assert.match(page, /onDelete=\{requestCategoryDelete\}/);
 });
 
+test("supports renaming a roster person without touching expense links", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /renamePersonInState/);
+  assert.match(page, /isPersonNameTaken/);
+  assert.match(page, /修改姓名/);
+  assert.match(page, /保存姓名/);
+  assert.match(page, /onEdit=\{openPersonEdit\}/);
+  // 人员库列表必须保留编辑入口
+  assert.match(page, /className="roster-actions"/);
+});
+
+test("supports renaming categories and trips from their management pages", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  // 类别改名要同步公共费用的类别名与清单筛选
+  assert.match(page, /renameCategoryInState/);
+  assert.match(page, /isCategoryNameTaken/);
+  assert.match(page, /修改类别名称/);
+  assert.match(page, /onEdit=\{openCategoryEdit\}/);
+  assert.match(page, /setSharedCategoryFilter\(\(filter\) => \(filter === from \? to : filter\)\)/);
+  assert.match(page, /setDetailFilter\(\(filter\) => \(filter === from \? to : filter\)\)/);
+
+  // 出行账单改名
+  assert.match(page, /renameTripInState/);
+  assert.match(page, /修改账单名称/);
+  assert.match(page, /onEdit=\{openTripEdit\}/);
+});
+
+test("labels every rename entry as 编辑 and pins the trip edit to the right", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // 三处入口统一叫“编辑”，不再出现“改名”
+  assert.doesNotMatch(page, /改名/);
+  assert.match(page, /aria-label=\{`编辑人员\$\{person\.name\}`\}/);
+  assert.match(page, /aria-label=\{`编辑类别\$\{category\}`\}/);
+  assert.match(page, /aria-label=\{`编辑账单\$\{trip\.title\}`\}/);
+
+  // 账单编辑按钮位于名称同一行，且在名称之后
+  assert.match(page, /className="trip-card-title-row"/);
+  const titleRow = page.slice(page.indexOf("trip-card-title-row"), page.indexOf("trip-card-side"));
+  assert.ok(titleRow.indexOf("trip-card-main") < titleRow.indexOf("trip-edit-button"));
+
+  // 名称区撑满整行把按钮顶到右侧固定位置；长名称换行不挤压按钮
+  assert.match(css, /\.trip-card-main\s*\{[^}]*flex:\s*1 1 auto/);
+  assert.match(css, /\.trip-card-main\s*\{[^}]*min-width:\s*0/);
+  assert.match(css, /\.trip-edit-button\s*\{[^}]*flex:\s*0 0 auto/);
+  assert.match(css, /\.trip-card strong\s*\{[^}]*overflow-wrap:\s*anywhere/);
+});
+
 test("removes starter preview dependencies and files", async () => {
   const [page, layout, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

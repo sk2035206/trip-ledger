@@ -8,8 +8,13 @@ import {
   getTripExpenseTypeTotals,
   getTripMemberRemovalImpact,
   getTripMemberUsage,
+  isCategoryNameTaken,
+  isPersonNameTaken,
   normalizeAppState,
   removeTripMember,
+  renameCategoryInState,
+  renamePersonInState,
+  renameTripInState,
   toPinyinSlug,
 } from "../frontend/trip-utils.ts";
 import { parseLedgerImportText, resolveLedgerImportCategory } from "../frontend/ledger-import.ts";
@@ -364,4 +369,128 @@ test("confirming removal re-splits expenses and drops personal records", () => {
   const afterPersonal = removeTripMember(trip, "personal");
   assert.deepEqual(afterPersonal.personalExpenses, []);
   assert.equal(calculateTrip(afterPersonal).personalTotal, 0);
+});
+
+function createRenameState() {
+  return {
+    people: [
+      { id: "a", name: "甲" },
+      { id: "b", name: "乙" },
+    ],
+    categories: ["酒店"],
+    trips: [
+      {
+        id: "t1",
+        title: "出行一",
+        dates: "2026",
+        members: [{ id: "a", name: "甲" }],
+        sharedExpenses: [
+          { id: "s1", title: "酒店", category: "酒店", amount: 200, payerId: "a", participantIds: ["a"] },
+        ],
+        travelCosts: [],
+        personalExpenses: [{ id: "p1", memberId: "a", title: "个人餐食", amount: 30 }],
+      },
+      {
+        id: "t2",
+        title: "出行二",
+        dates: "2026",
+        members: [
+          { id: "a", name: "甲" },
+          { id: "b", name: "乙" },
+        ],
+        sharedExpenses: [],
+        travelCosts: [],
+        personalExpenses: [],
+      },
+    ],
+  };
+}
+
+test("renames a person in the roster and every trip member copy", () => {
+  const state = createRenameState();
+  const next = renamePersonInState(state, "a", "甲改");
+
+  assert.equal(next.people.find((person) => person.id === "a").name, "甲改");
+  assert.equal(next.people.find((person) => person.id === "b").name, "乙");
+  assert.deepEqual(next.trips[0].members.map((member) => member.name), ["甲改"]);
+  assert.deepEqual(next.trips[1].members.map((member) => member.name), ["甲改", "乙"]);
+  assert.equal(next.trips[0].title, "出行一");
+
+  // 原状态不被修改，费用仍按 id 关联
+  assert.equal(state.people.find((person) => person.id === "a").name, "甲");
+  assert.deepEqual(next.trips[0].sharedExpenses[0].participantIds, ["a"]);
+  assert.equal(next.trips[0].sharedExpenses[0].payerId, "a");
+  assert.equal(next.trips[0].personalExpenses[0].memberId, "a");
+});
+
+test("trims the new name and ignores blank renames", () => {
+  const state = createRenameState();
+
+  assert.equal(renamePersonInState(state, "a", "  甲改  ").people[0].name, "甲改");
+  assert.equal(renamePersonInState(state, "a", "   "), state);
+  assert.equal(renamePersonInState(state, "a", ""), state);
+  assert.equal(renamePersonInState(state, "", "甲改"), state);
+});
+
+test("detects duplicate person names while allowing the current one", () => {
+  const state = createRenameState();
+
+  assert.equal(isPersonNameTaken(state, "乙"), true);
+  assert.equal(isPersonNameTaken(state, " 乙 "), true);
+  assert.equal(isPersonNameTaken(state, "丙"), false);
+  assert.equal(isPersonNameTaken(state, "  "), false);
+  // 改回自己原来的姓名不算重复
+  assert.equal(isPersonNameTaken(state, "乙", "b"), false);
+});
+
+test("renames a category in the list and every shared expense using it", () => {
+  const state = createRenameState();
+  state.trips[1].sharedExpenses.push({
+    id: "s2",
+    title: "午餐",
+    category: "酒店",
+    amount: 60,
+    participantIds: ["a", "b"],
+  });
+
+  const next = renameCategoryInState(state, "酒店", "住宿");
+
+  assert.deepEqual(next.categories, ["住宿"]);
+  assert.deepEqual(next.trips[0].sharedExpenses.map((item) => item.category), ["住宿"]);
+  assert.deepEqual(next.trips[1].sharedExpenses.map((item) => item.category), ["住宿"]);
+  // 原状态不受影响，金额与分摊人不变
+  assert.deepEqual(state.categories, ["酒店"]);
+  assert.equal(state.trips[0].sharedExpenses[0].category, "酒店");
+  assert.equal(next.trips[0].sharedExpenses[0].amount, 200);
+  assert.deepEqual(next.trips[0].sharedExpenses[0].participantIds, ["a"]);
+  assert.deepEqual(getTripCategoryTotals(next.trips[0]), [{ label: "住宿", amount: 200 }]);
+});
+
+test("ignores blank or unchanged category renames and detects duplicates", () => {
+  const state = createRenameState();
+  const withTwo = { ...state, categories: ["酒店", "吃玩"] };
+
+  assert.equal(renameCategoryInState(state, "酒店", "  "), state);
+  assert.equal(renameCategoryInState(state, "酒店", "酒店"), state);
+  assert.equal(renameCategoryInState(state, "", "住宿"), state);
+  assert.equal(renameCategoryInState(state, "酒店", "  住宿 ").categories[0], "住宿");
+
+  assert.equal(isCategoryNameTaken(withTwo, "吃玩"), true);
+  assert.equal(isCategoryNameTaken(withTwo, "门票"), false);
+  assert.equal(isCategoryNameTaken(withTwo, "  "), false);
+  assert.equal(isCategoryNameTaken(withTwo, "吃玩", "吃玩"), false);
+});
+
+test("renames a trip without touching its members and expenses", () => {
+  const state = createRenameState();
+  const next = renameTripInState(state, "t2", "  2027 新出行  ");
+
+  assert.equal(next.trips.find((trip) => trip.id === "t2").title, "2027 新出行");
+  assert.equal(next.trips.find((trip) => trip.id === "t1").title, "出行一");
+  assert.deepEqual(next.trips[1].members, state.trips[1].members);
+  assert.deepEqual(next.trips[1].sharedExpenses, state.trips[1].sharedExpenses);
+
+  assert.equal(renameTripInState(state, "t2", "   "), state);
+  assert.equal(renameTripInState(state, "", "新名称"), state);
+  assert.equal(renameTripInState(state, "missing", "新名称").trips[0].title, "出行一");
 });

@@ -1,7 +1,9 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import type { AppState, Person, Trip } from "../../frontend/trip-types";
 import { normalizeAppState } from "../../frontend/trip-utils";
+import { getMysqlConfig } from "./config";
 import { getMysqlPool } from "./pool";
+import { assertRevision, stateRevision } from "../state/revision";
 
 export const businessTables = [
   "people",
@@ -478,35 +480,54 @@ export async function getBusinessTableStats(): Promise<TableStat[]> {
 
 export async function readAppState(): Promise<AppState> {
   await ensureSchema();
-  return readStateFromTables(getMysqlPool());
-}
-
-export async function writeAppState(state: unknown): Promise<AppState> {
-  await ensureSchema();
-  return replaceState(normalizeAppState(state));
-}
-
-async function replaceState(state: AppState): Promise<AppState> {
   const connection = await getMysqlPool().getConnection();
-
   try {
-    return await replaceStateWithConnection(connection, state);
-  } finally {
-    connection.release();
-  }
-}
-
-async function replaceStateWithConnection(connection: PoolConnection, state: AppState): Promise<AppState> {
-  const normalized = normalizeAppState(state);
-
-  try {
-    await connection.beginTransaction();
-    await syncState(connection, normalized);
+    await connection.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    await connection.query("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY");
+    const state = await readStateFromTables(connection);
     await connection.commit();
-    return normalized;
+    return state;
   } catch (error) {
     await connection.rollback();
     throw error;
+  } finally { connection.release(); }
+}
+
+export async function readStateSnapshot() {
+  const state = await readAppState();
+  return { state, revision: stateRevision(state) };
+}
+
+export async function writeAppState(state: unknown, revision: unknown) {
+  // Reject outdated clients before touching storage. No schema change is needed.
+  if (typeof revision !== "string" || !revision) assertRevision({ people: [], categories: [], trips: [] }, revision);
+  if (!state || typeof state !== "object" || !Array.isArray((state as AppState).trips)) {
+    throw Object.assign(new Error("账单数据格式错误"), { status: 400 });
+  }
+  await ensureSchema();
+  const connection = await getMysqlPool().getConnection();
+  let locked = false;
+  // GET_LOCK is scoped to the database and shared by all API processes.
+  const lockName = `trip-ledger:${getMysqlConfig().database}`.slice(0, 64);
+  try {
+    const rows = await queryRows<RowDataPacket & { acquired: number }>(connection, "SELECT GET_LOCK(?, 10) AS acquired", [lockName]);
+    locked = rows[0]?.acquired === 1;
+    if (!locked) throw Object.assign(new Error("其他设备正在保存，请稍后重试"), { status: 503 });
+    await connection.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    await connection.beginTransaction();
+    const current = await readStateFromTables(connection);
+    assertRevision(current, revision);
+    await syncState(connection, normalizeAppState(state));
+    // Use the persisted representation, including SQL ordering/normalization.
+    const saved = await readStateFromTables(connection);
+    await connection.commit();
+    return { state: saved, revision: stateRevision(saved) };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    try { if (locked) await connection.query("SELECT RELEASE_LOCK(?)", [lockName]); }
+    finally { connection.release(); }
   }
 }
 

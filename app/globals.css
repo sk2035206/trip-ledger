@@ -1051,13 +1051,38 @@ button:disabled {
   background: #fffffb;
 }
 
+.trip-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 名称区占满整行，把编辑按钮顶到右侧固定位置，不随名称长度浮动 */
 .trip-card-main {
+  flex: 1 1 auto;
   min-width: 0;
   border: 0;
   background: transparent;
   color: var(--foreground);
   padding: 0;
   text-align: left;
+}
+
+/* 覆盖通用 button:hover，避免标题区在悬停时变成深色块 */
+.trip-card-main:hover {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--primary-strong);
+}
+
+/* 按钮宽度固定靠右，名称再长也不压缩它 */
+.trip-edit-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.8rem;
 }
 
 .trip-card-side {
@@ -1071,6 +1096,7 @@ button:disabled {
   color: var(--ink);
   font-size: 1rem;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .trip-card span {
@@ -1134,6 +1160,20 @@ button:disabled {
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.6;
+}
+
+.form-hint-error {
+  margin: 10px 0 0;
+  color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.roster-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .summary-table {
@@ -1528,3 +1568,7 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.sync-error { position: sticky; top: 0; z-index: 100; padding: 16px; background: #fff1d6; border: 1px solid #b88445; border-radius: 12px; color: #553c1a; }
+.sync-error p { margin: 8px 0; }
+.sync-error button { margin-right: 8px; }

@@ -1,82 +1,52 @@
 import type { AppState, Trip } from "./trip-types";
 import { normalizeAppState } from "./trip-utils";
+import { ApiClientError, createStateClient } from "./state-client";
+export { ApiClientError } from "./state-client";
 
-type ApiStateResponse = {
-  state?: unknown;
-  error?: string;
-};
-
-type ApiTripResponse = {
-  trip?: unknown;
-  error?: string;
-};
-
-export class ApiClientError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
+const client = createStateClient(async (path, method, body) => {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    method,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  return { status: response.status, data: await response.json() };
+});
 
 export async function loadRemoteState(): Promise<AppState> {
-  const response = await fetch(`${getApiBaseUrl()}/api/state`, {
-    headers: getApiHeaders(),
-  });
-  const payload = (await response.json()) as ApiStateResponse;
-
-  if (!response.ok) {
-    throw new ApiClientError(payload.error ?? "读取后端数据失败", response.status);
-  }
-
-  return normalizeAppState(payload.state);
+  return (await client.load()).state;
 }
 
 export async function loadRemoteTrip(tripId: string): Promise<Trip> {
   const response = await fetch(`${getApiBaseUrl()}/api/trips/${encodeURIComponent(tripId)}`, {
-    headers: getApiHeaders(),
+    headers: { Accept: "application/json" },
   });
-  const payload = (await response.json()) as ApiTripResponse;
-
-  if (!response.ok) {
-    throw new ApiClientError(payload.error ?? "读取出行账单失败", response.status);
-  }
-
-  const state = normalizeAppState({ trips: payload.trip ? [payload.trip] : [] });
-  const trip = state.trips[0];
+  const payload = await response.json() as { trip?: unknown; error?: string };
+  if (!response.ok) throw new ApiClientError(payload.error ?? "读取出行账单失败", response.status);
+  if (!payload.trip) throw new ApiClientError("出行账单不存在", 404);
+  const trip = normalizeAppState({ trips: [payload.trip] }).trips[0];
   if (!trip) throw new ApiClientError("出行账单不存在", 404);
   return trip;
 }
 
-export async function saveRemoteState(state: AppState): Promise<AppState> {
-  const response = await fetch(`${getApiBaseUrl()}/api/state`, {
-    method: "PUT",
-    headers: getApiHeaders(),
-    body: JSON.stringify({ state }),
-  });
-  const payload = (await response.json()) as ApiStateResponse;
-
-  if (!response.ok) {
-    throw new ApiClientError(payload.error ?? "保存后端数据失败", response.status);
-  }
-
-  return normalizeAppState(payload.state);
+let saveError: Error | null = null;
+const listeners = new Set<(error: Error | null) => void>();
+export function subscribeSaveError(listener: (error: Error | null) => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
-
+export async function saveRemoteState(state: AppState): Promise<AppState> {
+  try {
+    const result = await client.save(state);
+    saveError = null;
+    listeners.forEach((listener) => listener(null));
+    return result;
+  } catch (error) {
+    saveError = error instanceof Error ? error : new Error("保存失败，请重试");
+    listeners.forEach((listener) => listener(saveError));
+    throw error;
+  }
+}
 function getApiBaseUrl() {
   if (typeof window === "undefined") return "";
-
-  const configured = (window as Window & { __TRIP_LEDGER_API_BASE_URL__?: string })
-    .__TRIP_LEDGER_API_BASE_URL__;
-  if (configured) return configured.replace(/\/$/, "");
-
-  return "";
-}
-
-function getApiHeaders() {
-  return {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  };
+  return ((window as Window & { __TRIP_LEDGER_API_BASE_URL__?: string }).__TRIP_LEDGER_API_BASE_URL__ ?? "").replace(/\/$/, "");
 }

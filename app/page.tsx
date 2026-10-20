@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import { WechatShare } from "./wechat-share";
-import { loadRemoteState, saveRemoteState } from "@/frontend/api-client";
+import { loadRemoteState, saveRemoteState, subscribeSaveError, ApiClientError } from "@/frontend/api-client";
 import { normalizeBillTime, toBillTimeInputValue } from "@/frontend/bill-time";
 import { parseLedgerImportText, type LedgerImportDraft } from "@/frontend/ledger-import";
 import { defaultCategories, defaultState } from "@/frontend/sample-data";
@@ -33,7 +33,12 @@ import {
   getTripCategoryTotals,
   getTripMemberRemovalImpact,
   getTripMemberUsage,
+  isCategoryNameTaken,
+  isPersonNameTaken,
   removeTripMember,
+  renameCategoryInState,
+  renamePersonInState,
+  renameTripInState,
   splitAmount,
   uid,
 } from "@/frontend/trip-utils";
@@ -92,6 +97,9 @@ async function saveLatestState(
 }
 
 export default function Home() {
+  const [remoteError, setRemoteError] = useState<Error | null>(null);
+  useEffect(() => subscribeSaveError(setRemoteError), []);
+
   const [appState, setAppState] = useState<AppState>(defaultState);
   const [activeView, setActiveView] = useState<TopView>("workbench");
   const [ledgerTab, setLedgerTab] = useState<LedgerTab>("overview");
@@ -104,6 +112,12 @@ export default function Home() {
   const [tripPendingDeletion, setTripPendingDeletion] = useState<Trip | null>(null);
   const [memberPendingRemoval, setMemberPendingRemoval] = useState<Member | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [personEditTarget, setPersonEditTarget] = useState<Person | null>(null);
+  const [personEditName, setPersonEditName] = useState("");
+  const [categoryEditTarget, setCategoryEditTarget] = useState<string | null>(null);
+  const [categoryEditName, setCategoryEditName] = useState("");
+  const [tripEditTarget, setTripEditTarget] = useState<Trip | null>(null);
+  const [tripEditTitle, setTripEditTitle] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultState.trips[0].members[0].id);
   const [detailFilter, setDetailFilter] = useState("全部");
   const [sharedCategoryFilter, setSharedCategoryFilter] = useState("全部");
@@ -199,7 +213,20 @@ export default function Home() {
         ? "memberRemove"
         : pendingDelete
           ? "pendingDelete"
-          : null);
+          : personEditTarget
+            ? "personEdit"
+            : categoryEditTarget
+              ? "categoryEdit"
+              : tripEditTarget
+                ? "tripEdit"
+                : null);
+  const personEditNameTrimmed = personEditName.trim();
+  const isPersonEditNameTaken = isPersonNameTaken(appState, personEditName, personEditTarget?.id);
+  const canSavePersonName = Boolean(personEditNameTrimmed) && !isPersonEditNameTaken;
+  const categoryEditNameTrimmed = categoryEditName.trim();
+  const isCategoryEditNameTaken = isCategoryNameTaken(appState, categoryEditName, categoryEditTarget ?? undefined);
+  const canSaveCategoryName = Boolean(categoryEditNameTrimmed) && !isCategoryEditNameTaken;
+  const canSaveTripTitle = Boolean(tripEditTitle.trim());
   const memberRemovalImpact = memberPendingRemoval
     ? getTripMemberRemovalImpact(currentTrip, memberPendingRemoval.id)
     : [];
@@ -228,6 +255,7 @@ export default function Home() {
       } catch (error) {
         if (cancelled) return;
         hasLoadedRemote.current = false;
+        setRemoteError(error instanceof Error ? error : new Error("后端连接失败，请刷新重试"));
         console.error("[trip-ledger] 后端连接失败", error);
       }
     }
@@ -410,6 +438,12 @@ export default function Home() {
         setTripPendingDeletion(null);
         setMemberPendingRemoval(null);
         setPendingDelete(null);
+        setPersonEditTarget(null);
+        setPersonEditName("");
+        setCategoryEditTarget(null);
+        setCategoryEditName("");
+        setTripEditTarget(null);
+        setTripEditTitle("");
         return;
       }
 
@@ -598,6 +632,75 @@ export default function Home() {
       meta: "全局人员库",
       note: "删除后该人员不再出现在人员库中；已被账单使用的人员不可删除。",
     });
+  }
+
+  function openPersonEdit(person: Person) {
+    setPersonEditTarget(person);
+    setPersonEditName(person.name);
+  }
+
+  function closePersonEdit() {
+    setPersonEditTarget(null);
+    setPersonEditName("");
+  }
+
+  function renameGlobalPerson() {
+    if (!personEditTarget || !canSavePersonName) return;
+    const personId = personEditTarget.id;
+    const name = personEditName.trim();
+    setAppState((state) => {
+      const nextState = renamePersonInState(state, personId, name);
+      persistImmediately(nextState);
+      return nextState;
+    });
+    closePersonEdit();
+  }
+
+  function openCategoryEdit(category: string) {
+    setCategoryEditTarget(category);
+    setCategoryEditName(category);
+  }
+
+  function closeCategoryEdit() {
+    setCategoryEditTarget(null);
+    setCategoryEditName("");
+  }
+
+  function renameCategory() {
+    if (!categoryEditTarget || !canSaveCategoryName) return;
+    const from = categoryEditTarget;
+    const to = categoryEditName.trim();
+    setAppState((state) => {
+      const nextState = renameCategoryInState(state, from, to);
+      persistImmediately(nextState);
+      return nextState;
+    });
+    // 清单筛选按类别名保存，重命名后同步，避免筛出空列表
+    setSharedCategoryFilter((filter) => (filter === from ? to : filter));
+    setDetailFilter((filter) => (filter === from ? to : filter));
+    closeCategoryEdit();
+  }
+
+  function openTripEdit(trip: Trip) {
+    setTripEditTarget(trip);
+    setTripEditTitle(trip.title);
+  }
+
+  function closeTripEdit() {
+    setTripEditTarget(null);
+    setTripEditTitle("");
+  }
+
+  function renameTrip() {
+    if (!tripEditTarget || !canSaveTripTitle) return;
+    const tripId = tripEditTarget.id;
+    const title = tripEditTitle.trim();
+    setAppState((state) => {
+      const nextState = renameTripInState(state, tripId, title);
+      persistImmediately(nextState);
+      return nextState;
+    });
+    closeTripEdit();
   }
 
   function requestTripDelete(trip: Trip) {
@@ -1089,6 +1192,19 @@ export default function Home() {
 
   return (
     <main className="app-shell">
+      {remoteError && <aside className="sync-error" role="alert">
+        <strong>{remoteError.message}</strong>
+        <p>当前页面的修改可能尚未保存。刷新将放弃未保存的修改。</p>
+        {!(remoteError instanceof ApiClientError && [409, 428].includes(remoteError.status)) &&
+          <button type="button" onClick={() => {
+            if (hasLoadedRemote.current) { pendingSaveStateRef.current = appState; void saveLatestState(saveInFlightRef, pendingSaveStateRef); }
+            else window.location.reload();
+          }}>重试</button>}
+        <button type="button" onClick={() => {
+          if (window.confirm("刷新将放弃本地未保存修改，确定读取最新账单？")) window.location.reload();
+        }}>刷新最新账单</button>
+      </aside>}
+
       {activeView === "ledger" && (
         <WechatShare
           title={`${currentTrip.title}分账清单`}
@@ -1213,7 +1329,12 @@ export default function Home() {
                 新建账单
               </button>
             </div>
-            <TripList trips={appState.trips} onOpen={openLedger} onRequestDelete={requestTripDelete} />
+            <TripList
+              trips={appState.trips}
+              onOpen={openLedger}
+              onEdit={openTripEdit}
+              onRequestDelete={requestTripDelete}
+            />
           </Panel>
 
           <Panel title="出行分布" kicker="账单金额">
@@ -1234,6 +1355,7 @@ export default function Home() {
             <RosterList
               people={appState.people}
               trips={appState.trips}
+              onEdit={openPersonEdit}
               onDelete={requestRosterPersonDelete}
             />
           </Panel>
@@ -1256,6 +1378,7 @@ export default function Home() {
             <CategoryManager
               categories={appState.categories}
               trips={appState.trips}
+              onEdit={openCategoryEdit}
               onDelete={requestCategoryDelete}
             />
           </Panel>
@@ -1311,7 +1434,7 @@ export default function Home() {
             <section className="content-grid">
               <Panel title="本次人员列表" kicker={`${currentTrip.members.length} 人`}>
                 <div className="list-toolbar">
-                  <span>只维护当前账单成员，仅支持从人员库添加</span>
+                  <span>只维护当前账单成员，仅支持从人员库选择添加</span>
                   <button type="button" onClick={() => setCreateModal("tripMember")}>
                     新增人员
                   </button>
@@ -1513,6 +1636,75 @@ export default function Home() {
             </button>
             <button type="button" onClick={addGlobalPerson}>
               保存人员
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {personEditTarget && (
+        <Modal title="修改姓名" kicker="人员管理" onClose={closePersonEdit}>
+          <div className="form-grid single-form">
+            <input
+              value={personEditName}
+              onChange={(event) => setPersonEditName(event.target.value)}
+              placeholder="人员姓名"
+            />
+          </div>
+          {isPersonEditNameTaken && (
+            <p className="form-hint-error">人员库中已存在同名人员，请换一个姓名。</p>
+          )}
+          <div className="form-footer">
+            <span>修改后所有账本中该人员都会同步显示新姓名。</span>
+            <button type="button" className="ghost-button" onClick={closePersonEdit}>
+              取消
+            </button>
+            <button type="button" disabled={!canSavePersonName} onClick={renameGlobalPerson}>
+              保存姓名
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {categoryEditTarget && (
+        <Modal title="修改类别名称" kicker="类别管理" onClose={closeCategoryEdit}>
+          <div className="form-grid single-form">
+            <input
+              value={categoryEditName}
+              onChange={(event) => setCategoryEditName(event.target.value)}
+              placeholder="类别名称，如住宿/餐饮"
+            />
+          </div>
+          {isCategoryEditNameTaken && (
+            <p className="form-hint-error">已存在同名类别，请换一个名称。</p>
+          )}
+          <div className="form-footer">
+            <span>修改后所有账本中该类别下的公共费用会同步更新。</span>
+            <button type="button" className="ghost-button" onClick={closeCategoryEdit}>
+              取消
+            </button>
+            <button type="button" disabled={!canSaveCategoryName} onClick={renameCategory}>
+              保存名称
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {tripEditTarget && (
+        <Modal title="修改账单名称" kicker="出行管理" onClose={closeTripEdit}>
+          <div className="form-grid single-form">
+            <input
+              value={tripEditTitle}
+              onChange={(event) => setTripEditTitle(event.target.value)}
+              placeholder="出行账单名称"
+            />
+          </div>
+          <div className="form-footer">
+            <span>账单内的成员和费用不会变化。</span>
+            <button type="button" className="ghost-button" onClick={closeTripEdit}>
+              取消
+            </button>
+            <button type="button" disabled={!canSaveTripTitle} onClick={renameTrip}>
+              保存名称
             </button>
           </div>
         </Modal>
@@ -2198,10 +2390,12 @@ function Empty({ text }: { text: string }) {
 function TripList({
   trips,
   onOpen,
+  onEdit,
   onRequestDelete,
 }: {
   trips: Trip[];
   onOpen: (id: string) => void;
+  onEdit: (trip: Trip) => void;
   onRequestDelete: (trip: Trip) => void;
 }) {
   if (trips.length === 0) return <Empty text="暂无出行账单" />;
@@ -2211,12 +2405,23 @@ function TripList({
         const totals = calculateTrip(trip);
         return (
           <article className="trip-card" key={trip.id}>
-            <button className="trip-card-main" type="button" onClick={() => onOpen(trip.id)}>
-            <div>
-              <strong>{trip.title}</strong>
-              <span>{trip.members.length} 人 / {trip.sharedExpenses.length + trip.travelCosts.length + trip.personalExpenses.length} 项费用</span>
+            <div className="trip-card-title-row">
+              <button className="trip-card-main" type="button" onClick={() => onOpen(trip.id)}>
+                <strong>{trip.title}</strong>
+                <span>
+                  {trip.members.length} 人 /{" "}
+                  {trip.sharedExpenses.length + trip.travelCosts.length + trip.personalExpenses.length} 项费用
+                </span>
+              </button>
+              <button
+                type="button"
+                className="ghost-button trip-edit-button"
+                aria-label={`编辑账单${trip.title}`}
+                onClick={() => onEdit(trip)}
+              >
+                编辑
+              </button>
             </div>
-            </button>
             <div className="trip-card-side">
               <b>{formatMoney(totals.finalTotal)}</b>
               {canDeleteTrip(trip) ? (
@@ -2275,10 +2480,12 @@ function PeopleUsage({ people, trips }: { people: Person[]; trips: Trip[] }) {
 function RosterList({
   people,
   trips,
+  onEdit,
   onDelete,
 }: {
   people: Person[];
   trips: Trip[];
+  onEdit: (person: Person) => void;
   onDelete: (id: string) => void;
 }) {
   if (people.length === 0) return <Empty text="暂无全局人员" />;
@@ -2292,14 +2499,24 @@ function RosterList({
               <strong>{person.name}</strong>
               <span>{usedCount ? `已用于 ${usedCount} 个账本` : "未加入任何账本"}</span>
             </div>
-            <button
-              type="button"
-              className="ghost-danger"
-              disabled={usedCount > 0}
-              onClick={() => onDelete(person.id)}
-            >
-              删除
-            </button>
+            <div className="roster-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                aria-label={`编辑人员${person.name}`}
+                onClick={() => onEdit(person)}
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                className="ghost-danger"
+                disabled={usedCount > 0}
+                onClick={() => onDelete(person.id)}
+              >
+                删除
+              </button>
+            </div>
           </article>
         );
       })}
@@ -2310,10 +2527,12 @@ function RosterList({
 function CategoryManager({
   categories,
   trips,
+  onEdit,
   onDelete,
 }: {
   categories: string[];
   trips: Trip[];
+  onEdit: (category: string) => void;
   onDelete: (name: string) => void;
 }) {
   if (categories.length === 0) return <Empty text="暂无费用类别" />;
@@ -2330,9 +2549,24 @@ function CategoryManager({
               <strong>{category}</strong>
               <span>{count ? `已用于 ${count} 项公共费用` : "暂未使用"}</span>
             </div>
-            <button type="button" className="ghost-danger" disabled={count > 0} onClick={() => onDelete(category)}>
-              删除
-            </button>
+            <div className="roster-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                aria-label={`编辑类别${category}`}
+                onClick={() => onEdit(category)}
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                className="ghost-danger"
+                disabled={count > 0}
+                onClick={() => onDelete(category)}
+              >
+                删除
+              </button>
+            </div>
           </article>
         );
       })}

@@ -46,7 +46,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (apiPath === "/api/state" && request.method === "GET") {
-      sendJson(response, 200, { state: await getLedgerState() });
+      sendJson(response, 200, await getLedgerState());
       return;
     }
 
@@ -62,15 +62,16 @@ const server = createServer(async (request, response) => {
     }
 
     if (apiPath === "/api/state" && request.method === "PUT") {
-      const payload = (await readJson(request)) as { state?: unknown };
-      sendJson(response, 200, { state: await saveLedgerState(payload.state) });
+      const payload = (await readJson(request)) as { state?: unknown; revision?: unknown };
+      sendJson(response, 200, await saveLedgerState(payload.state, payload.revision));
       return;
     }
 
     sendJson(response, 404, { error: "Not found" });
   } catch (error) {
     console.error("[api-error]", error);
-    sendJson(response, 500, { error: toApiError(error) });
+    const status = error && typeof error === "object" && "status" in error && typeof error.status === "number" ? error.status : 500;
+    sendJson(response, status, { error: toApiError(error) });
   }
 });
 

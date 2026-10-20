@@ -141,6 +141,63 @@ export function normalizeAppState(value: unknown): AppState {
   return defaultState;
 }
 
+// 姓名以全局人员库为准，同时同步各账单内的成员副本，避免界面上出现旧姓名。
+export function renamePersonInState(state: AppState, personId: string, name: string): AppState {
+  const nextName = name.trim();
+  if (!personId || !nextName) return state;
+
+  const rename = (person: Person): Person =>
+    person.id === personId ? { ...person, name: nextName } : person;
+
+  return {
+    ...state,
+    people: state.people.map(rename),
+    trips: state.trips.map((trip) => ({
+      ...trip,
+      members: trip.members.map(rename),
+    })),
+  };
+}
+
+export function isPersonNameTaken(state: AppState, name: string, exceptPersonId?: string) {
+  const target = name.trim();
+  if (!target) return false;
+  return state.people.some((person) => person.id !== exceptPersonId && person.name === target);
+}
+
+// 类别按名称被公共费用引用，改名需要同步所有账单内的类别名。
+export function renameCategoryInState(state: AppState, from: string, to: string): AppState {
+  const nextName = to.trim();
+  if (!from || !nextName || from === nextName) return state;
+
+  return {
+    ...state,
+    categories: state.categories.map((category) => (category === from ? nextName : category)),
+    trips: state.trips.map((trip) => ({
+      ...trip,
+      sharedExpenses: trip.sharedExpenses.map((item) =>
+        item.category === from ? { ...item, category: nextName } : item,
+      ),
+    })),
+  };
+}
+
+export function isCategoryNameTaken(state: AppState, name: string, exceptName?: string) {
+  const target = name.trim();
+  if (!target) return false;
+  return state.categories.some((category) => category !== exceptName && category === target);
+}
+
+export function renameTripInState(state: AppState, tripId: string, title: string): AppState {
+  const nextTitle = title.trim();
+  if (!tripId || !nextTitle) return state;
+
+  return {
+    ...state,
+    trips: state.trips.map((trip) => (trip.id === tripId ? { ...trip, title: nextTitle } : trip)),
+  };
+}
+
 export function calculateTrip(trip: Trip) {
   const memberTotals = trip.members.map<MemberTotal>((member) => {
     const shared = trip.sharedExpenses.reduce((sum, item) => {
