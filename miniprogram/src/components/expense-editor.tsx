@@ -360,19 +360,21 @@ export function TextImporter({
           "5月16日\n打车出行 支付宝自动记账\n17:27 | 滴滴出行 -70.07"
         }
       />
-      <Action
-        secondary
-        disabled={busy || !text.trim()}
-        onClick={() => {
-          const parsed = parseLedgerImportText(text, categories);
-          setDrafts(
-            parsed.map((d) => ({ ...d, amountInput: String(d.amount) })),
-          );
-          if (!parsed.length) notify("未识别到费用，请检查文本格式");
-        }}
-      >
-        解析文本
-      </Action>
+      <View className="import-parse-action">
+        <Action
+          secondary
+          disabled={busy || !text.trim()}
+          onClick={() => {
+            const parsed = parseLedgerImportText(text, categories);
+            setDrafts(
+              parsed.map((d) => ({ ...d, amountInput: String(d.amount) })),
+            );
+            if (!parsed.length) notify("未识别到费用，请检查文本格式");
+          }}
+        >
+          解析文本
+        </Action>
+      </View>
       {drafts.length > 0 && (
         <>
           <MemberChoices

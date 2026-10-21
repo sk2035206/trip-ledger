@@ -206,8 +206,8 @@ export function SyncStatus() {
   const ledger = useLedger();
   return (
     <View className={`sync ${ledger.error ? "sync-warning" : ""}`}>
-      <View className="row between">
-        <View className="sync-label">
+      <View className="header-row">
+        <View className="sync-label header-main">
           <View
             className={`status-dot ${ledger.loading || ledger.saving ? "is-loading" : ""}`}
           />
@@ -225,14 +225,16 @@ export function SyncStatus() {
                     : "等待连接账本"}
           </Text>
         </View>
-        <Button
-          className="sync-refresh"
-          ariaLabel="刷新账本"
-          disabled={ledger.saving || ledger.loading}
-          onClick={() => void refreshLedger()}
-        >
-          <Icon name="refresh" />
-        </Button>
+        <View className="header-actions">
+          <Button
+            className="sync-refresh"
+            ariaLabel="刷新账本"
+            disabled={ledger.saving || ledger.loading}
+            onClick={() => void refreshLedger()}
+          >
+            <Icon name="refresh" />
+          </Button>
+        </View>
       </View>
       {ledger.error && (
         <View>
@@ -256,18 +258,26 @@ export function Chips({
   options,
   value,
   onChange,
+  variant = "filter",
 }: {
   options: string[];
+  variant?: "filter" | "tabs";
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
     <ScrollView scrollX className="chips-scroll" showScrollbar={false}>
-      <View className="chips">
+      <View
+        className="chips"
+        ariaRole={variant === "tabs" ? "tablist" : undefined}
+      >
         {options.map((option) => (
           <Button
             key={option}
             className={`chip ${value === option ? "selected" : ""}`}
+            hoverClass="none"
+            ariaRole={variant === "tabs" ? "tab" : undefined}
+            ariaSelected={value === option}
             onClick={() => onChange(option)}
           >
             {option}
@@ -288,24 +298,30 @@ export function MemberChoices({
 }) {
   return (
     <View className="field">
-      <View className="row between">
-        <Text className="label">参与分摊人员 · {ids.length} 人</Text>
-        <Button
-          className="text-button"
-          onClick={() =>
-            onChange(
-              ids.length === members.length ? [] : members.map((m) => m.id),
-            )
-          }
-        >
-          {ids.length === members.length ? "清空" : "全选"}
-        </Button>
+      <View className="header-row member-choice-head">
+        <Text className="label header-main">
+          参与分摊人员 · {ids.length} 人
+        </Text>
+        <View className="header-actions">
+          <Button
+            className="text-button"
+            onClick={() =>
+              onChange(
+                ids.length === members.length ? [] : members.map((m) => m.id),
+              )
+            }
+          >
+            {ids.length === members.length ? "清空" : "全选"}
+          </Button>
+        </View>
       </View>
-      <View className="choices">
+      <View className="choices member-grid">
         {members.map((m) => (
           <Button
             key={m.id}
-            className={`chip ${ids.includes(m.id) ? "selected" : ""}`}
+            className={`member-option ${ids.includes(m.id) ? "selected" : ""}`}
+            ariaLabel={m.name}
+            ariaSelected={ids.includes(m.id)}
             onClick={() =>
               onChange(
                 ids.includes(m.id)
@@ -314,8 +330,10 @@ export function MemberChoices({
               )
             }
           >
-            {ids.includes(m.id) ? "✓ " : ""}
-            {m.name}
+            <View className="choice-check">
+              {ids.includes(m.id) && <Icon name="check" />}
+            </View>
+            <Text className="member-choice-label">{m.name}</Text>
           </Button>
         ))}
       </View>

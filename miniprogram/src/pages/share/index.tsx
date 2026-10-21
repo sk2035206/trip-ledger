@@ -53,16 +53,18 @@ export default function SharePage() {
   return (
     <View className="page">
       <View className="trip-heading">
-        <View className="trip-topline">
-          <View className="journey-tag">
+        <View className="trip-topline header-row">
+          <View className="journey-tag header-main">
             <Icon name="trip" />
             <Text>只读分享</Text>
           </View>
           {trip && (
-            <Button className="share-control" openType="share">
-              <Icon name="share" />
-              <Text>转发账单</Text>
-            </Button>
+            <View className="header-actions">
+              <Button className="share-control" openType="share">
+                <Icon name="share" />
+                <Text>转发账单</Text>
+              </Button>
+            </View>
           )}
         </View>
         <Text className="trip-title">{trip?.title ?? "旅行分账清单"}</Text>

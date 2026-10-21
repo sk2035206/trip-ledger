@@ -252,8 +252,8 @@ export default function HomePage() {
   );
   return (
     <View className="page home-page">
-      <View className="page-heading">
-        <View>
+      <View className="page-heading header-row">
+        <View className="header-main">
           <Text className="eyebrow">TRIP LEDGER</Text>
           <Text className="page-title">
             {tab === "工作台" ? "把每一程，记清楚。" : tab}
@@ -269,14 +269,16 @@ export default function HomePage() {
           </Text>
         </View>
         {tab !== "工作台" && (
-          <Button
-            className="circle-add"
-            ariaLabel={`新增${kind === "trip" ? "账单" : kind === "person" ? "人员" : "类别"}`}
-            disabled={blocked || !state}
-            onClick={() => open(kind)}
-          >
-            <Icon name="plus" />
-          </Button>
+          <View className="header-actions">
+            <Button
+              className="circle-add"
+              ariaLabel={`新增${kind === "trip" ? "账单" : kind === "person" ? "人员" : "类别"}`}
+              disabled={blocked || !state}
+              onClick={() => open(kind)}
+            >
+              <Icon name="plus" />
+            </Button>
+          </View>
         )}
       </View>
       <SyncStatus />

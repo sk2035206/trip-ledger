@@ -91,16 +91,18 @@ export function SectionHeader({
   onAction?: () => void;
 }) {
   return (
-    <View className="section-head">
-      <View className="section-heading">
+    <View className="section-head header-row">
+      <View className="section-heading header-main">
         <Text className="section-title">{title}</Text>
         {note && <Text className="section-note">{note}</Text>}
       </View>
       {action && (
-        <Button className="text-button" onClick={onAction}>
-          {action}
-          <Icon name="chevron" />
-        </Button>
+        <View className="header-actions">
+          <Button className="text-button" onClick={onAction}>
+            {action}
+            <Icon name="chevron" />
+          </Button>
+        </View>
       )}
     </View>
   );
@@ -209,13 +211,18 @@ export function AmountSummary({
 }
 export function CategoryBars({
   items,
+  signed = false,
 }: {
   items: { label: string; amount: number }[];
+  signed?: boolean;
 }) {
-  const max = Math.max(...items.map((item) => item.amount), 1);
+  const max = Math.max(
+    ...items.map((item) => (signed ? Math.abs(item.amount) : item.amount)),
+    1,
+  );
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   return (
-    <View className="category-bars">
+    <View className={`category-bars ${signed ? "signed-category-bars" : ""}`}>
       {[...items]
         .sort((a, b) => b.amount - a.amount)
         .map((item, index) => (
@@ -226,16 +233,31 @@ export function CategoryBars({
                 <Text>{item.label}</Text>
               </View>
               <View className="row">
-                <Text className="money">¥{formatMoney(item.amount)}</Text>
-                <Text className="bar-percent">
-                  {total ? Math.round((item.amount / total) * 100) : 0}%
+                <Text className={`money ${item.amount < 0 ? "refund" : ""}`}>
+                  {signed && item.amount !== 0
+                    ? item.amount > 0
+                      ? "+"
+                      : "−"
+                    : ""}
+                  ¥{formatMoney(signed ? Math.abs(item.amount) : item.amount)}
                 </Text>
+                {!signed && (
+                  <Text className="bar-percent">
+                    {total ? Math.round((item.amount / total) * 100) : 0}%
+                  </Text>
+                )}
               </View>
             </View>
             <View className="bar-track">
               <View
-                className={`bar-fill color-${index % 4}`}
-                style={{ width: `${Math.max(2, (item.amount / max) * 100)}%` }}
+                className={`bar-fill color-${index % 4} ${item.amount < 0 ? "bar-credit" : ""}`}
+                style={
+                  signed
+                    ? {
+                        width: `${(Math.abs(item.amount) / max) * 100}%`,
+                      }
+                    : { width: `${Math.max(2, (item.amount / max) * 100)}%` }
+                }
               />
             </View>
           </View>

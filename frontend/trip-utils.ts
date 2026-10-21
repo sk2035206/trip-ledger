@@ -372,6 +372,15 @@ export function getMemberCategoryTotals(items: LedgerLine[]) {
   return Array.from(totals.entries()).map(([label, amount]) => ({ label, amount }));
 }
 
+// Same net-category calculation used by the H5 group summary, including payer credits.
+export function getGroupCategoryTotals(trip: Trip, memberIds: string[]) {
+  const selected = new Set(memberIds);
+  const items = trip.members
+    .filter((member) => selected.has(member.id))
+    .flatMap((member) => getMemberLedgerItems(trip, member.id));
+  return getMemberCategoryTotals(items);
+}
+
 export type TripMemberUsage = {
   sharedAsParticipant: number;
   sharedAsPayer: number;

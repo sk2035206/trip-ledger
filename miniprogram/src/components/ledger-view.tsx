@@ -6,6 +6,7 @@ import type { ExpenseKind } from "@ledger/ledger-actions";
 import {
   calculateTrip,
   formatMoney,
+  getGroupCategoryTotals,
   getMemberLedgerItems,
   getMemberName,
   getTripCategoryTotals,
@@ -91,6 +92,9 @@ export default function LedgerView({
   const groupTotal = totals.memberTotals
     .filter((item) => groupIds.includes(item.member.id))
     .reduce((sum, item) => sum + item.total, 0);
+  const groupCategories = groupIds.length
+    ? getGroupCategoryTotals(trip, groupIds)
+    : getTripCategoryTotals(trip);
   const kind = tabKind[tab];
   const hasComposer = Boolean(onAdd || onAddMember);
   function openMember(id: string) {
@@ -273,6 +277,7 @@ export default function LedgerView({
     <View className={`ledger-area ${hasComposer ? "with-composer" : ""}`}>
       <View className="ledger-tabs">
         <Chips
+          variant="tabs"
           options={["总览", "清单", "公费", "出行", "个人", "人员"]}
           value={tab}
           onChange={switchTab}
@@ -356,28 +361,30 @@ export default function LedgerView({
             />
           )}
           {kind === "shared" && batchMode && (
-            <View className="selection-head">
-              <Button
-                className="text-button"
-                disabled={disabled}
-                onClick={() =>
-                  setSelected(
-                    allFiltered
-                      ? selectedIds.filter(
-                          (id) => !filteredShared.some((e) => e.id === id),
-                        )
-                      : [
-                          ...new Set([
-                            ...selectedIds,
-                            ...filteredShared.map((e) => e.id),
-                          ]),
-                        ],
-                  )
-                }
-              >
-                {allFiltered ? "取消全选" : "全选当前分类"}
-              </Button>
-              <Text>已选 {selectedIds.length} 笔</Text>
+            <View className="selection-head header-row">
+              <Text className="header-main">已选 {selectedIds.length} 笔</Text>
+              <View className="header-actions">
+                <Button
+                  className="text-button"
+                  disabled={disabled}
+                  onClick={() =>
+                    setSelected(
+                      allFiltered
+                        ? selectedIds.filter(
+                            (id) => !filteredShared.some((e) => e.id === id),
+                          )
+                        : [
+                            ...new Set([
+                              ...selectedIds,
+                              ...filteredShared.map((e) => e.id),
+                            ]),
+                          ],
+                    )
+                  }
+                >
+                  {allFiltered ? "取消全选" : "全选当前分类"}
+                </Button>
+              </View>
             </View>
           )}
           <View className="expense-list">
@@ -575,11 +582,13 @@ export default function LedgerView({
           <Text className="form-intro">
             选择一起结算的伙伴，合并查看最终应付金额。
           </Text>
-          <View className="group-choices">
+          <View className="group-choices member-grid">
             {trip.members.map((person) => (
               <Button
                 key={person.id}
-                className={`group-choice ${groupIds.includes(person.id) ? "selected" : ""}`}
+                className={`group-choice member-option ${groupIds.includes(person.id) ? "selected" : ""}`}
+                ariaLabel={person.name}
+                ariaSelected={groupIds.includes(person.id)}
                 onClick={() =>
                   setGroupIds((ids) =>
                     ids.includes(person.id)
@@ -588,14 +597,39 @@ export default function LedgerView({
                   )
                 }
               >
-                <Avatar name={person.name} />
-                <Text>{person.name}</Text>
                 <View className="choice-check">
                   {groupIds.includes(person.id) && <Icon name="check" />}
                 </View>
+                <Text className="member-choice-label">{person.name}</Text>
               </Button>
             ))}
           </View>
+          <Panel
+            title="分项合计"
+            subtitle={
+              groupIds.length
+                ? `已选 ${groupIds.length} 人组合`
+                : "当前账单 · 公共费用分类"
+            }
+          >
+            {groupCategories.length ? (
+              <CategoryBars
+                items={groupCategories}
+                signed={groupIds.length > 0}
+              />
+            ) : (
+              <Empty
+                text={
+                  groupIds.length ? "当前组合暂无费用" : "暂无公共费用类别金额"
+                }
+              />
+            )}
+            <Text className="group-breakdown-note">
+              {groupIds.length
+                ? "含公共分摊、出行和个人费用；代付款以负数抵扣，各项相加即为组合应付。"
+                : "选择同行伙伴后，查看组合分项与最终应付。"}
+            </Text>
+          </Panel>
         </Sheet>
       )}
     </View>
