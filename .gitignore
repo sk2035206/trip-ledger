@@ -58,3 +58,9 @@ yarn-error.log*
 
 # Per-developer WeChat IDE preferences (both import roots)
 /project.private.config.json
+
+# WeChat CI upload private key
+/config/private.key
+
+# Isolated WeChat CI tool dependencies
+/tools/wechat-ci/node_modules/

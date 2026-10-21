@@ -32,6 +32,8 @@ tar \
   --exclude='.vinext' \
   --exclude='dist/client' \
   --exclude='config/mysql.json' \
+  --exclude='config/*.key' \
+  --exclude='config/*.pem' \
   -czf "$BACKEND_TAR" \
   package.json package-lock.json tsconfig.json vite.config.ts next.config.ts postcss.config.mjs \
   app build config frontend public scripts server dist

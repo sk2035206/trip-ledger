@@ -94,6 +94,10 @@ npm run dev:stop
 | `npm run mini:dev` | 监听并构建微信小程序 |
 | `npm run mini:build` | 构建微信小程序发布产物 |
 | `npm run mini:typecheck` | 小程序 TypeScript 检查 |
+| `npm run mini:ci:install` | 安装独立、固定版本的官方上传工具 |
+| `npm run mini:upload:check` | 离线检查密钥与上传产物，不调用微信接口 |
+| `npm run mini:upload -- --version … --desc …` | 通过官方 CI 上传开发版本 |
+| `npm run mini:ci:audit` | 审计独立 CI 工具的依赖 |
 
 日志统一写入 `logs/`。
 
@@ -115,11 +119,13 @@ npm run mini:build
 # 使用隔离测试 API 时可通过 TRIP_LEDGER_API_URL 覆盖地址
 ```
 
-正式 AppID：`wx028019a8de4909d1`。用户于 **2026-10-21 确认已完成账号切换和版本发布**。默认 API 为 `https://jcxxy.cn`；内部共用账本，不增加用户数据隔离。
+正式 AppID：`wx028019a8de4909d1`。用户已确认完成账号切换，并手动上传、发布 **1.0.1**。默认 API 为 `https://jcxxy.cn`；内部共用账本，不增加用户数据隔离。
 
 微信开发者工具可导入仓库根目录或 `miniprogram/`；两处配置分别指向 `miniprogram/dist/` 和 `dist/`，上传范围均为小程序产物。私有 IDE 配置、依赖、构建目录不提交。
 
 安装、联调、UI 交互、保存冲突与后续发布步骤见 [微信小程序说明](docs/wechat-miniprogram.md)，已完成的部署和发布见 [发布记录](docs/releases.md)。
+
+官方代码上传的密钥默认放在 `config/private.key`，已排除出 Git 和服务器发布包。首次使用 CI 先执行 `npm run mini:ci:install`、`npm run mini:upload:check`；真实上传仍须显式提供版本号和说明，命令只上传开发版本。密钥与 IP 白名单的远端有效性需要在实际上传时验证。
 
 ## 相关文档
 

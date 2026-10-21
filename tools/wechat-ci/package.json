@@ -1,0 +1,9 @@
+{
+  "name": "trip-ledger-wechat-ci-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "miniprogram-ci": "2.1.31"
+  }
+}

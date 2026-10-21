@@ -4,6 +4,7 @@
 
 - 正式 AppID：`wx028019a8de4909d1`。
 - 用户于 **2026-10-21 确认已完成正式账号切换和版本发布**；具体版本号、审核与发布时间以微信公众平台为准。
+- 当前用户确认已手动上传并发布的版本：`1.0.1`。
 - 默认 API：`https://jcxxy.cn`，与 H5 共用现有 Node API / MySQL 账本。
 - H5 / API 已于 2026-10-20 配套部署，`GET /api/state` 已支持 `revision`。历史记录见 [发布记录](releases.md)。
 
@@ -126,6 +127,56 @@ TRIP_LEDGER_API_URL=http://127.0.0.1:5174 npm run mini:dev
 小程序成功读取前不能编辑，也不会将示例数据作为远程账本保存。保存期间禁用其他修改；失败后保留当前内存草稿，可重试或复制 JSON。409 后不自动更新版本覆盖远程数据，需复制草稿，再确认放弃本地修改并刷新。关闭小程序会丢失内存草稿。
 
 若服务器提交后网络断开，重试可能收到 409；先刷新核对实际数据，避免重复录入。
+
+## 官方 miniprogram-ci 上传
+
+官方工具安装在独立目录 `tools/wechat-ci/`，不加入 H5 或 Taro 的依赖树，也不进入小程序产物。默认固定 npm 的 `latest` 标签对应版本 `2.1.31`；核验时 npm 发布者为 `wechat-miniprogram`。GitHub 分发仓库标注的 `2.1.48` 属于 npm 的 beta 标签，不作为本项目默认版本。
+
+`tools/wechat-ci/.npmrc` 使用官方 npm registry 并禁用依赖安装脚本；版本与完整依赖 integrity 记录在独立锁文件。后续升级须重新核验来源、审计与验证，不直接拉取 GitHub master 或执行强制修复。
+
+### 首次安装与离线检查
+
+```bash
+npm run mini:ci:install
+npm run mini:upload:check
+```
+
+用户提供的代码上传私钥保留在 `config/private.key`，其权限应为 `600`。该文件已加入 Git 忽略，服务器打包脚本也排除 `config/*.key` 和 `config/*.pem`。可通过环境变量指定其他本地路径：
+
+```bash
+WX_CI_PRIVATE_KEY=/你的安全目录/private.key npm run mini:upload:check
+```
+
+预检会本地解析 RSA 私钥、确认未被 Git 跟踪且仓库内密钥已忽略，再执行新的生产构建。只复制构建目录和白名单公共项目配置到 `release/wechat-ci/candidate-*/project/`，拦截密钥、环境文件、私有 IDE 配置、符号链接和含私钥标记的文件。密钥路径传给 SDK，密钥本身不复制进上传目录，不写日志。
+
+`--check` 不调用微信接口，不上传或预览代码，不能确认微信后台是否已登记对应公钥以及当前出口 IP 是否在白名单中。
+
+### 上传开发版本
+
+1. 在微信公众平台为正式 AppID 下载代码上传密钥，并配置实际上传机器的出口 IP 白名单。保留白名单限制，IP 改变时按实际情况更新。
+2. 按本次授权填写新的版本号与说明。例如下面是后续版本的命令示例，**不是已执行的上传**：
+
+```bash
+npm run mini:upload -- --version 1.0.2 --desc '本次更新说明'
+```
+
+脚本支持可选 `--robot 1`（范围 1–30）。不提供版本号或说明会立即拒绝，避免误传默认版本；每次上传都会重新构建，不复用陈旧产物。
+
+正式调用是 `ci.Project` + `ci.upload`，只上传隔离目录对应的小程序开发版，不提交审核、正式发布或操作云开发资源，也不依赖开发者工具登录和本机 CLI 服务端口。
+
+每次检查或成功上传的摘要位于 `release/wechat-ci/candidate-*/`，包含 AppID、版本、说明、SDK 版本、源码提交/是否有未提交修改、文件清单与 SHA-256；成功上传另写 `upload-result.json`。敏感字段不会写入摘要，整个目录属于本地忽略产物。
+
+### 依赖审计与边界
+
+```bash
+npm run mini:ci:audit
+```
+
+官方来源并不代表依赖没有漏洞。首次审计发现官方 SDK 依赖树含已知高危和严重问题；使用版本、审计结果与验证范围见 `tools/wechat-ci/README.md`。当前采取版本锁定、禁用安装脚本、独立依赖目录、受控产物和密钥排除；**独立目录不等于操作系统沙箱，也不能消除依赖漏洞**。仅对可信源码和构建产物使用该工具，不让非受信任的 PR 或外部包接触上传私钥。
+
+真实上传前需要评估当前审计结果。不要为了消除审计提示直接运行 `npm audit fix --force` 或擅自替换 SDK 固定依赖；优先采用经验证的官方更新。IP 白名单、微信权限与实际网络请求的验证仍需首次真实上传确认。
+
+官方参考：[SDK 使用说明](https://github.com/wechat-miniprogram/miniprogram-ci-dist#readme)、[npm 包](https://www.npmjs.com/package/miniprogram-ci)。
 
 ## 后续发布流程
 

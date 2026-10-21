@@ -33,6 +33,7 @@
   ],
   "exclude": [
     "node_modules",
-    "miniprogram"
+    "miniprogram",
+    "tools/wechat-ci/node_modules"
   ]
 }

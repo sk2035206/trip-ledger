@@ -26,7 +26,11 @@
     "mini:install": "npm install --prefix miniprogram --legacy-peer-deps",
     "mini:dev": "npm --prefix miniprogram run dev:weapp",
     "mini:build": "npm --prefix miniprogram run build:weapp",
-    "mini:typecheck": "npm --prefix miniprogram run typecheck"
+    "mini:typecheck": "npm --prefix miniprogram run typecheck",
+    "mini:ci:install": "npm ci --prefix tools/wechat-ci --ignore-scripts",
+    "mini:upload:check": "node scripts/mini-upload.mjs --check",
+    "mini:upload": "node scripts/mini-upload.mjs",
+    "mini:ci:audit": "npm audit --prefix tools/wechat-ci"
   },
   "dependencies": {
     "mysql2": "^3.23.3",
