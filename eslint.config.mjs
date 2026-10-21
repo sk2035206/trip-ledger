@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "miniprogram/node_modules/**",
+    "miniprogram/dist/**",
   ]),
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -22,6 +24,11 @@ const eslintConfig = defineConfig([
   reactHooks.configs.flat["recommended-latest"],
   jsxA11y.flatConfigs.recommended,
   next.configs["core-web-vitals"],
+  {
+    files: ["miniprogram/**/*.ts", "miniprogram/**/*.tsx"],
+    languageOptions: { globals: { defineAppConfig: "readonly", definePageConfig: "readonly", __API_BASE__: "readonly" } },
+    rules: { "react/prop-types": "off" },
+  },
   {
     languageOptions: {
       globals: {

@@ -48,3 +48,13 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# WeChat mini program
+/miniprogram/node_modules/
+/miniprogram/dist/
+/miniprogram/.taro/
+/miniprogram/project.private.config.json
+/miniprogram/.swc/
+
+# Per-developer WeChat IDE preferences (both import roots)
+/project.private.config.json

@@ -14,6 +14,7 @@ export async function PUT(request: Request) {
 async function proxyRequest(path: string, init?: RequestInit) {
   const response = await fetch(`${backendBaseUrl}${path}`, {
     ...init,
+    cache: "no-store",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
@@ -26,6 +27,7 @@ async function proxyRequest(path: string, init?: RequestInit) {
     status: response.status,
     headers: {
       "Content-Type": response.headers.get("Content-Type") ?? "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
     },
   });
 }

@@ -1,5 +1,7 @@
 # 旅行分账部署说明
 
+本文描述 **H5 与 Node API 服务器部署**。微信小程序代码上传、审核与发布见 [小程序维护说明](wechat-miniprogram.md)，已完成的上线记录见 [发布记录](releases.md)。
+
 ## 目录约定
 
 - 前端静态资源目录：`/usr/share/nginx/html/trip-ledger`
@@ -40,7 +42,7 @@ REMOTE_BACKEND_DIR=/home/trip-ledger
 npm run deploy:scp
 ```
 
-默认会上传到 `xxy`，并自动创建远端目录。需要发到其他服务器时，修改 `config/deploy.env` 里的 `DEPLOY_TARGET`。
+该命令会先重新打包，再上传到 `xxy`，并自动创建远端目录；不会自动执行解压和重启。需要发到其他服务器时，修改 `config/deploy.env` 里的 `DEPLOY_TARGET`。
 
 ## 服务器解压与启动
 
@@ -112,3 +114,12 @@ server {
     }
 }
 ```
+
+## 版本协议与回退
+
+- `/api/state` 保存协议包含 `revision`，H5 与 API 必须配套部署，不混跑新旧 API 进程；已打开的旧 H5 页面需要刷新。
+- 上传前检查发布包与验证过的源码一致，且不包含 `config/mysql.json` 等真实配置。
+- 替换代码前备份前后端产物，保留当前数据库配置；依赖锁文件未变化时复用已安装依赖。
+- 重启后先做只读检查：H5 页面、静态资源、健康检查、`GET /api/state` 的 `revision`、单账单和分享页。不要用真实账单执行测试保存。
+- 若启动失败，停止本次应用进程，恢复配套前后端代码归档后再启动；代码回退不等于数据库回退，不执行未授权的数据恢复。
+- 2026-10-20 的已部署归档与备份位置见 [发布记录](releases.md)。

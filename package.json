@@ -22,7 +22,11 @@
     "release:build": "scripts/release-build.sh",
     "deploy:scp": "scripts/deploy-scp.sh",
     "test": "npm run build && node --import tsx --test tests/*.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern release"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern release",
+    "mini:install": "npm install --prefix miniprogram --legacy-peer-deps",
+    "mini:dev": "npm --prefix miniprogram run dev:weapp",
+    "mini:build": "npm --prefix miniprogram run build:weapp",
+    "mini:typecheck": "npm --prefix miniprogram run typecheck"
   },
   "dependencies": {
     "mysql2": "^3.23.3",

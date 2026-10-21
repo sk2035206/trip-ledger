@@ -6,6 +6,7 @@ export { ApiClientError } from "./state-client";
 const client = createStateClient(async (path, method, body) => {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method,
+    cache: "no-store",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });

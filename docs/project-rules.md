@@ -12,7 +12,7 @@
 ## 2. 项目定位
 
 - 项目名称：Trip Ledger，旅行分账 H5。
-- 当前形态：H5 Web 应用，后续可封装为 Android App。
+- 当前形态：H5 Web 应用 + Taro React 微信小程序，微信小程序已由用户完成正式版本发布。
 - 主要用途：记录旅行账单、管理出行人员、录入公共费用/出行费用/个人费用，并生成最终分账清单。
 - 当前访问域名：[https://jcxxy.cn/ledger/](https://jcxxy.cn/ledger/)。
 
@@ -168,7 +168,8 @@
 ## 7. 前后端结构
 
 - `app/`：页面与前端路由。
-- `frontend/`：共享类型、计算逻辑、示例数据、API 客户端。
+- `frontend/`：共享类型、计算逻辑、示例数据、API 客户端、费用校验与文本解析。
+- `miniprogram/`：独立 Taro React 微信小程序工程，根目录和子目录均提供开发者工具导入配置。
 - `server/`：Node API、服务层、MySQL 存储。
 - `server/mysql/schema.sql`：手工初始化参考 SQL。
 - `scripts/`：本地和生产启停、打包、上传脚本。
@@ -282,3 +283,20 @@ NEXT_PUBLIC_WECHAT_SIGNATURE_URL=https://jcxxy.cn/gzh/api/wechat/signature
 - 当前项目不使用 Cloudflare Worker、D1、R2，也不使用 Wrangler 绑定配置。
 - 已删除 `drizzle`、`examples`、`worker`、`.openai/hosting.json` 和 `app/chatgpt-auth.ts` 等模板残留；不要再引入这些作为默认方案。
 - 数据库访问统一走 `server/mysql/` 的 `mysql2` 连接池与手写 SQL，不引入 ORM 或迁移工具。
+
+## 13. 微信小程序
+
+- 微信小程序端位于 `miniprogram/`，使用 Taro + React + TypeScript；与 H5 分开安装依赖，目标平台仅微信小程序。
+- 内部使用，共用现有全局人员、类别和账单，不新增用户数据隔离，保持现有查看逻辑。
+- 纯业务类型、计算、日期、文本解析与保存协议复用 `frontend/`；微信页面使用小程序组件与 API。
+- 第一期提供核心管理、费用、批量操作、文本确认导入、只读分享和保存冲突检测；截图 OCR 后续再做。
+- 全量保存必须携带读取时的 `revision`，409 时不可自动刷新版本后覆盖；应提示用户复制草稿并确认刷新。
+- 小程序分享页只调用单账单接口，不能读取全量状态或提供写入入口。
+- 不使用生产数据库做开发写入验证；真机、后台域名、AppID 和版本配套发布见 `docs/wechat-miniprogram.md`。
+
+- 正式 AppID：`wx028019a8de4909d1`，默认 API：`https://jcxxy.cn`。用户于 2026-10-21 确认已完成切换和版本发布，后续不再使用测试号配置。
+- 同步修改两处 `project.config.json` 的 AppID，并保持各自的 `miniprogramRoot` 正确；`project.private.config.json` 属于个人 IDE 偏好，不提交。
+- `lazyCodeLoading: "requiredComponents"` 必须保留，构建后检查 `dist/app.json`；上传前在开发者工具重新扫描代码质量。
+- 小程序 UI 沿用 H5 的账单六分区；主入口使用底部导航，录入使用底部主操作和弹层，删除保留二次确认。
+- 后续发布须区分 H5 / API 服务器部署和微信小程序上传审核；本地构建与 Git 提交不等于发布。
+- 历史上线与验证结论维护在 `docs/releases.md`，日常使用说明不要保留已失效的测试号或协议阻塞描述。

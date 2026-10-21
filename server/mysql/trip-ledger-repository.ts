@@ -4,6 +4,7 @@ import { normalizeAppState } from "../../frontend/trip-utils";
 import { getMysqlConfig } from "./config";
 import { getMysqlPool } from "./pool";
 import { assertRevision, stateRevision } from "../state/revision";
+import { saveStateTransaction } from "../state/save-transaction";
 
 export const businessTables = [
   "people",
@@ -506,29 +507,10 @@ export async function writeAppState(state: unknown, revision: unknown) {
   }
   await ensureSchema();
   const connection = await getMysqlPool().getConnection();
-  let locked = false;
-  // GET_LOCK is scoped to the database and shared by all API processes.
   const lockName = `trip-ledger:${getMysqlConfig().database}`.slice(0, 64);
-  try {
-    const rows = await queryRows<RowDataPacket & { acquired: number }>(connection, "SELECT GET_LOCK(?, 10) AS acquired", [lockName]);
-    locked = rows[0]?.acquired === 1;
-    if (!locked) throw Object.assign(new Error("其他设备正在保存，请稍后重试"), { status: 503 });
-    await connection.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-    await connection.beginTransaction();
-    const current = await readStateFromTables(connection);
-    assertRevision(current, revision);
-    await syncState(connection, normalizeAppState(state));
-    // Use the persisted representation, including SQL ordering/normalization.
-    const saved = await readStateFromTables(connection);
-    await connection.commit();
-    return { state: saved, revision: stateRevision(saved) };
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    try { if (locked) await connection.query("SELECT RELEASE_LOCK(?)", [lockName]); }
-    finally { connection.release(); }
-  }
+  return saveStateTransaction(connection, lockName, revision, readStateFromTables, async (db) => {
+    await syncState(db, normalizeAppState(state));
+  });
 }
 
 async function readStateFromTables(db: Queryable): Promise<AppState> {
