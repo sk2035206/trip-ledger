@@ -2,6 +2,8 @@ const backendBaseUrl = process.env.TRIP_LEDGER_API_URL ?? "http://127.0.0.1:5174
 
 export async function proxyAuthRequest(request: Request, path: string, method: "GET" | "POST") {
   const cookie = request.headers.get("Cookie");
+  const client = request.headers.get("X-Trip-Ledger-Client");
+  const session = request.headers.get("X-Workbench-Session");
   const response = await fetch(`${backendBaseUrl}${path}`, {
     method,
     cache: "no-store",
@@ -9,6 +11,8 @@ export async function proxyAuthRequest(request: Request, path: string, method: "
       Accept: "application/json",
       "Content-Type": "application/json",
       ...(cookie ? { Cookie: cookie } : {}),
+      ...(client ? { "X-Trip-Ledger-Client": client } : {}),
+      ...(session ? { "X-Workbench-Session": session } : {}),
     },
     ...(method === "POST" ? { body: await request.text() } : {}),
   });

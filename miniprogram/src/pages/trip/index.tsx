@@ -25,12 +25,14 @@ import {
   confirmAction,
   loadLedger,
   notify,
+  requireLedgerLogin,
   refreshLedger,
   updateTrip,
   useLedger,
 } from "../../lib/store";
 import { Avatar, Icon, SearchBox } from "../../components/visual";
 import { shareInfo } from "../../lib/api";
+import { hasMiniSession } from "../../lib/api";
 
 type Modal =
   | { kind: "expense"; type: ExpenseKind; id?: string }
@@ -45,6 +47,10 @@ export default function TripPage() {
   const trip = ledger.state?.trips.find((t) => t.id === tripId);
   const disabled = ledger.saving || ledger.dirty || ledger.loading;
   useLoad((params) => {
+    if (!hasMiniSession()) {
+      requireLedgerLogin();
+      return;
+    }
     setTripId(params.tripId ?? "");
     if (!ledger.state) void loadLedger();
   });
@@ -211,11 +217,24 @@ export default function TripPage() {
           )}
         </>
       ) : (
-        <Empty
-          text={
-            ledger.loading ? "读取账单中…" : "账单不存在或尚未读取，请刷新重试"
-          }
-        />
+        <View>
+          <Empty
+            text={
+              ledger.loading
+                ? "读取账单中…"
+                : ledger.authRequired
+                  ? "登录并连接账本后可查看详情"
+                  : "账单不存在或尚未读取，请刷新重试"
+            }
+          />
+          {ledger.authRequired && (
+            <View className="connect-ledger-action">
+              <Action onClick={() => void Taro.reLaunch({ url: "/pages/home/index" })}>
+                返回首页连接账本
+              </Action>
+            </View>
+          )}
+        </View>
       )}
     </View>
   );

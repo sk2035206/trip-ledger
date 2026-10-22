@@ -1,5 +1,9 @@
 export default defineAppConfig({
-  pages: ["pages/home/index", "pages/trip/index", "pages/share/index"],
+  pages: [
+    "pages/home/index",
+    "pages/trip/index",
+    "pages/share/index",
+  ],
   lazyCodeLoading: "requiredComponents",
   window: {
     navigationBarTitleText: "旅行分账",

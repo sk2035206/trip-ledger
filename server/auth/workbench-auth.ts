@@ -22,7 +22,9 @@ export function getWorkbenchSessionExpiration(
   config: WorkbenchAuthSettings,
   now = Date.now(),
 ) {
-  const token = parseCookies(request.headers.cookie ?? "")[config.cookieName];
+  const sessionHeader = request.headers["x-workbench-session"];
+  const headerToken = Array.isArray(sessionHeader) ? sessionHeader[0] : sessionHeader;
+  const token = headerToken?.trim() || parseCookies(request.headers.cookie ?? "")[config.cookieName];
   if (!token) return null;
 
   const separator = token.indexOf(".");

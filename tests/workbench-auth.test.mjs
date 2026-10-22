@@ -32,6 +32,9 @@ test("workbench sessions expire and reject tampering", () => {
 
   const tamperedRequest = { headers: { cookie: `${config.cookieName}=${session.token}x` } };
   assert.equal(getWorkbenchSessionExpiration(tamperedRequest, config, now), null);
+
+  const miniRequest = { headers: { "x-workbench-session": session.token } };
+  assert.equal(getWorkbenchSessionExpiration(miniRequest, config, now), session.expiresAt);
 });
 
 test("workbench cookie is http-only and lasts seven days", () => {

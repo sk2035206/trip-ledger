@@ -25,8 +25,11 @@ const server = createServer(async (request, response) => {
 
   if (corsOrigin) {
     response.setHeader("Access-Control-Allow-Origin", corsOrigin);
-    response.setHeader("Access-Control-Allow-Methods", "GET,PUT,OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
+    response.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, X-Trip-Ledger-Client, X-Workbench-Session",
+    );
   }
 
   if (request.method === "OPTIONS") {
@@ -62,10 +65,17 @@ const server = createServer(async (request, response) => {
         return;
       }
       const session = createWorkbenchSession(authConfig);
+      const clientHeader = request.headers["x-trip-ledger-client"];
+      const client = Array.isArray(clientHeader) ? clientHeader[0] : clientHeader;
       sendJson(
         response,
         200,
-        { authenticated: true, expiresAt: session.expiresAt, sessionDays: authConfig.sessionDays },
+        {
+          authenticated: true,
+          expiresAt: session.expiresAt,
+          sessionDays: authConfig.sessionDays,
+          ...(client === "miniprogram" ? { sessionToken: session.token } : {}),
+        },
         { "Set-Cookie": serializeWorkbenchSessionCookie(session.token, authConfig, isSecureRequest(request)) },
       );
       return;

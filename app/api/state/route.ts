@@ -13,6 +13,8 @@ export async function PUT(request: Request) {
 
 async function proxyRequest(request: Request, path: string, init?: RequestInit) {
   const cookie = request.headers.get("Cookie");
+  const client = request.headers.get("X-Trip-Ledger-Client");
+  const session = request.headers.get("X-Workbench-Session");
   const response = await fetch(`${backendBaseUrl}${path}`, {
     ...init,
     cache: "no-store",
@@ -20,6 +22,8 @@ async function proxyRequest(request: Request, path: string, init?: RequestInit) 
       Accept: "application/json",
       "Content-Type": "application/json",
       ...(cookie ? { Cookie: cookie } : {}),
+      ...(client ? { "X-Trip-Ledger-Client": client } : {}),
+      ...(session ? { "X-Workbench-Session": session } : {}),
       ...init?.headers,
     },
   });

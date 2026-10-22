@@ -11,6 +11,7 @@ type Store = {
   dirty: boolean;
   error: string;
   conflict: boolean;
+  authRequired: boolean;
 };
 let snapshot: Store = {
   state: null,
@@ -19,12 +20,31 @@ let snapshot: Store = {
   dirty: false,
   error: "",
   conflict: false,
+  authRequired: false,
 };
 const listeners = new Set<() => void>();
 function publish(patch: Partial<Store>) {
   snapshot = { ...snapshot, ...patch };
   listeners.forEach((listener) => listener());
 }
+
+export function resetLedger(authRequired = false) {
+  publish({
+    state: null,
+    loading: false,
+    saving: false,
+    dirty: false,
+    error: "",
+    conflict: false,
+    authRequired,
+  });
+}
+
+export function requireLedgerLogin() {
+  resetLedger(true);
+}
+
+Taro.eventCenter.on("workbench-auth-expired", requireLedgerLogin);
 export function useLedger() {
   return useSyncExternalStore(
     (listener) => {
@@ -42,11 +62,16 @@ export async function loadLedger(discard = false) {
   publish({ loading: true, error: "" });
   try {
     const result = await client.load();
-    publish({ state: result.state, dirty: false, conflict: false });
+    publish({ state: result.state, dirty: false, conflict: false, authRequired: false });
   } catch (error) {
+    const authRequired = error instanceof ApiClientError && error.status === 401;
     publish({
-      error:
-        error instanceof Error ? error.message : "连接失败，请检查网络后重试",
+      error: authRequired
+        ? ""
+        : error instanceof Error
+          ? error.message
+          : "连接失败，请检查网络后重试",
+      authRequired,
     });
   } finally {
     publish({ loading: false });

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import Taro, { useDidShow, usePullDownRefresh } from "@tarojs/taro";
-import { View, Text, Button } from "@tarojs/components";
+import { View, Text, Button, Input } from "@tarojs/components";
 import type { AppState, Trip } from "@ledger/trip-types";
 import {
   calculateGlobal,
@@ -27,10 +27,13 @@ import {
   confirmAction,
   loadLedger,
   notify,
+  requireLedgerLogin,
   refreshLedger,
+  resetLedger,
   saveChange,
   useLedger,
 } from "../../lib/store";
+import { hasMiniSession, loginMini } from "../../lib/api";
 
 import {
   AmountSummary,
@@ -56,7 +59,15 @@ export default function HomePage() {
   const [form, setForm] = useState<Form | null>(null);
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
   useDidShow(() => {
+    if (!hasMiniSession()) {
+      requireLedgerLogin();
+      return;
+    }
     if (!ledger.state && !ledger.error) void loadLedger();
   });
   usePullDownRefresh(() => {
@@ -73,6 +84,30 @@ export default function HomePage() {
     void Taro.navigateTo({
       url: `/pages/trip/index?tripId=${encodeURIComponent(trip.id)}`,
     });
+
+  function openLogin() {
+    setLoginPassword("");
+    setLoginError("");
+    setLoginOpen(true);
+  }
+
+  async function connectLedger() {
+    if (!loginPassword || loggingIn) return;
+    setLoggingIn(true);
+    setLoginError("");
+    try {
+      await loginMini(loginPassword);
+      resetLedger();
+      setLoginOpen(false);
+      setLoginPassword("");
+      await loadLedger(true);
+      notify("账本已连接");
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "登录失败，请稍后重试");
+    } finally {
+      setLoggingIn(false);
+    }
+  }
 
   async function submit() {
     if (!state || !form || blocked) return;
@@ -283,14 +318,29 @@ export default function HomePage() {
       </View>
       <SyncStatus />
       {!state && (
-        <Panel title={ledger.loading ? "正在打开账本" : "暂时无法读取账本"}>
+        <Panel
+          title={
+            ledger.loading
+              ? "正在打开账本"
+              : ledger.authRequired
+                ? "连接账本"
+                : "暂时无法读取账本"
+          }
+        >
           <Empty
             text={
               ledger.loading
                 ? "稍等一下，旅程正在加载…"
+                : ledger.authRequired
+                  ? "登录后可查看和管理旅行账单"
                 : "请检查连接后，点击上方刷新重试"
             }
           />
+          {ledger.authRequired && (
+            <View className="connect-ledger-action">
+              <Action onClick={openLogin}>登录并连接</Action>
+            </View>
+          )}
         </Panel>
       )}
       {state && totals && (
@@ -487,6 +537,41 @@ export default function HomePage() {
         </>
       )}
       <BottomNav value={tab} onChange={switchTab} />
+      {loginOpen && (
+        <Sheet
+          compact
+          title="登录并连接账本"
+          onClose={() => {
+            if (!loggingIn) setLoginOpen(false);
+          }}
+          footer={
+            <Action
+              disabled={!loginPassword || loggingIn}
+              onClick={() => void connectLedger()}
+            >
+              {loggingIn ? "正在连接…" : "登录并连接"}
+            </Action>
+          }
+        >
+          <Text className="form-intro">输入访问密码后，将在 7 天内保持账本连接。</Text>
+          <View className="field">
+            <Text className="label">访问密码</Text>
+            <Input
+              className="input"
+              type="text"
+              password
+              value={loginPassword}
+              maxlength={100}
+              confirmType="done"
+              placeholder="请输入密码"
+              placeholderClass="input-placeholder"
+              onInput={(event) => setLoginPassword(event.detail.value)}
+              onConfirm={() => void connectLedger()}
+            />
+          </View>
+          {loginError && <Text className="login-error">{loginError}</Text>}
+        </Sheet>
+      )}
       {form && (
         <Sheet
           compact
