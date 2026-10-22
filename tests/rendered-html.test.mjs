@@ -30,7 +30,9 @@ test("builds the trip ledger app", async () => {
   assert.match(serverEntry, /route:\/api\/state/);
   assert.match(serverEntry, /route:\/api\/health/);
   assert.match(serverManifest, /prerenderSecret/);
-  assert.doesNotMatch(page, /请输入访问口令|输入后端访问口令|token-form/);
+  assert.match(page, /请输入访问密码后进入工作台/);
+  assert.match(page, /登录状态有效/);
+  assert.match(page, /loadWorkbenchSession/);
   assert.doesNotMatch(page, /Your site is taking shape|Building your site/);
 });
 

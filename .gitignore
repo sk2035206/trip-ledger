@@ -38,6 +38,7 @@ yarn-error.log*
 # local database credentials
 /config/mysql.json
 /config/deploy.env
+/config/workbench-auth.json
 
 # vercel
 .vercel

@@ -2,12 +2,22 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { URL } from "node:url";
+import {
+  createWorkbenchSession,
+  getWorkbenchSessionExpiration,
+  isSecureRequest,
+  serializeWorkbenchLogoutCookie,
+  serializeWorkbenchSessionCookie,
+  verifyWorkbenchPassword,
+} from "./auth/workbench-auth";
+import { WorkbenchAuthConfig } from "./config/workbench-auth-config";
 import { readJson, sendJson, toApiError } from "./http/json";
 import { getLedgerState, getLedgerTrip, getStorageHealth, saveLedgerState } from "./services/trip-ledger-service";
 
 const host = process.env.API_HOST ?? "127.0.0.1";
 const port = Number(process.env.API_PORT ?? 5174);
 const corsOrigin = process.env.CORS_ORIGIN;
+const authConfig = WorkbenchAuthConfig.load();
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
@@ -42,6 +52,47 @@ const server = createServer(async (request, response) => {
       } else {
         response.end();
       }
+      return;
+    }
+
+    if (apiPath === "/api/auth/login" && request.method === "POST") {
+      const payload = (await readJson(request)) as { password?: unknown };
+      if (!verifyWorkbenchPassword(payload.password, authConfig)) {
+        sendJson(response, 401, { error: "密码错误" });
+        return;
+      }
+      const session = createWorkbenchSession(authConfig);
+      sendJson(
+        response,
+        200,
+        { authenticated: true, expiresAt: session.expiresAt, sessionDays: authConfig.sessionDays },
+        { "Set-Cookie": serializeWorkbenchSessionCookie(session.token, authConfig, isSecureRequest(request)) },
+      );
+      return;
+    }
+
+    if (apiPath === "/api/auth/session" && request.method === "GET") {
+      const expiresAt = getWorkbenchSessionExpiration(request, authConfig);
+      sendJson(response, 200, {
+        authenticated: Boolean(expiresAt),
+        expiresAt,
+        sessionDays: authConfig.sessionDays,
+      });
+      return;
+    }
+
+    if (apiPath === "/api/auth/logout" && request.method === "POST") {
+      sendJson(
+        response,
+        200,
+        { authenticated: false, sessionDays: authConfig.sessionDays },
+        { "Set-Cookie": serializeWorkbenchLogoutCookie(authConfig, isSecureRequest(request)) },
+      );
+      return;
+    }
+
+    if (apiPath === "/api/state" && !getWorkbenchSessionExpiration(request, authConfig)) {
+      sendJson(response, 401, { error: "请先登录" });
       return;
     }
 

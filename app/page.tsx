@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type MutableRefObject,
+  type ReactNode,
+} from "react";
 import { WechatShare } from "./wechat-share";
+import { loadWorkbenchSession, loginWorkbench } from "@/frontend/auth-client";
 import { loadRemoteState, saveRemoteState, subscribeSaveError, ApiClientError } from "@/frontend/api-client";
 import { normalizeBillTime, toBillTimeInputValue } from "@/frontend/bill-time";
 import { parseLedgerImportText, type LedgerImportDraft } from "@/frontend/ledger-import";
@@ -96,7 +106,105 @@ async function saveLatestState(
   }
 }
 
+type AuthStatus = "checking" | "authenticated" | "unauthenticated";
+
 export default function Home() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [sessionDays, setSessionDays] = useState(7);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadWorkbenchSession()
+      .then((session) => {
+        if (cancelled) return;
+        setSessionDays(session.sessionDays);
+        setAuthStatus(session.authenticated ? "authenticated" : "unauthenticated");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuthError("登录服务暂时不可用，请稍后重试");
+        setAuthStatus("unauthenticated");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setPassword("");
+      setAuthError("登录已过期，请重新输入密码");
+      setAuthStatus("unauthenticated");
+    };
+    window.addEventListener("trip-ledger-auth-expired", handleExpiredSession);
+    return () => window.removeEventListener("trip-ledger-auth-expired", handleExpiredSession);
+  }, []);
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!password || isLoggingIn) return;
+    setIsLoggingIn(true);
+    setAuthError("");
+    try {
+      const session = await loginWorkbench(password);
+      setSessionDays(session.sessionDays);
+      setPassword("");
+      setAuthStatus("authenticated");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "登录失败，请重试");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
+  if (authStatus === "checking") {
+    return (
+      <main className="auth-shell">
+        <section className="auth-panel" aria-live="polite">
+          <span className="auth-mark" aria-hidden="true">TL</span>
+          <h1>旅行分账</h1>
+          <p>正在验证登录状态...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (authStatus === "unauthenticated") {
+    return (
+      <main className="auth-shell">
+        <section className="auth-panel">
+          <span className="auth-mark" aria-hidden="true">TL</span>
+          <p className="eyebrow">Trip Ledger</p>
+          <h1>旅行分账</h1>
+          <p className="auth-intro">请输入访问密码后进入工作台</p>
+          <form className="auth-form" onSubmit={handleLogin}>
+            <label htmlFor="workbench-password">访问密码</label>
+            <input
+              id="workbench-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-invalid={Boolean(authError)}
+            />
+            {authError && <p className="auth-error" role="alert">{authError}</p>}
+            <button type="submit" disabled={!password || isLoggingIn}>
+              {isLoggingIn ? "正在登录..." : "进入工作台"}
+            </button>
+          </form>
+          <small>登录状态有效 {sessionDays} 天</small>
+        </section>
+      </main>
+    );
+  }
+
+  return <Workbench />;
+}
+
+function Workbench() {
   const [remoteError, setRemoteError] = useState<Error | null>(null);
   useEffect(() => subscribeSaveError(setRemoteError), []);
 

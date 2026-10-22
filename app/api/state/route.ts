@@ -1,23 +1,25 @@
 const backendBaseUrl = process.env.TRIP_LEDGER_API_URL ?? "http://127.0.0.1:5174";
 
-export async function GET() {
-  return proxyRequest("/api/state");
+export async function GET(request: Request) {
+  return proxyRequest(request, "/api/state");
 }
 
 export async function PUT(request: Request) {
-  return proxyRequest("/api/state", {
+  return proxyRequest(request, "/api/state", {
     method: "PUT",
     body: await request.text(),
   });
 }
 
-async function proxyRequest(path: string, init?: RequestInit) {
+async function proxyRequest(request: Request, path: string, init?: RequestInit) {
+  const cookie = request.headers.get("Cookie");
   const response = await fetch(`${backendBaseUrl}${path}`, {
     ...init,
     cache: "no-store",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...(cookie ? { Cookie: cookie } : {}),
       ...init?.headers,
     },
   });

@@ -1,7 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-export function sendJson(response: ServerResponse, status: number, payload: unknown) {
-  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+export function sendJson(response: ServerResponse, status: number, payload: unknown, headers: Record<string, string> = {}) {
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    ...headers,
+  });
   response.end(JSON.stringify(payload));
 }
 

@@ -10,6 +10,9 @@ const client = createStateClient(async (path, method, body) => {
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("trip-ledger-auth-expired"));
+  }
   return { status: response.status, data: await response.json() };
 });
 
