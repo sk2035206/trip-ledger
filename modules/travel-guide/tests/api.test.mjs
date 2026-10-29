@@ -17,3 +17,13 @@ test('cycling parses AMap v4 response geometry and error codes',async()=>{
  const blocked=createAmapClient(config,async()=>response({errcode:10001,errmsg:'INVALID_USER_KEY'}));await assert.rejects(blocked.route('112.9,28.1','112.91,28.11','cycling'),/INVALID_USER_KEY/);
  await assert.rejects(api.route('112.9,28.1','112.91,28.11','subway'),/参数无效/);
 });
+
+test('city centers use the service API with bounded requests and valid coordinates',async()=>{
+ let target,calls=0;const api=createAmapClient(config,async url=>{target=url;calls++;return response({status:'1',districts:[{name:'张家界市',center:'110.478887,29.117343',level:'city'}]});});
+ for(const city of [null,'',' '.repeat(3),'x'.repeat(81)])await assert.rejects(api.city(city),e=>e.status===400);
+ assert.equal(calls,0);assert.deepEqual(await api.city('张家界'),{center:[110.478887,29.117343],zoom:10});assert.equal(target.pathname,'/v3/config/district');assert.equal(target.searchParams.get('subdistrict'),'0');assert.equal(target.searchParams.get('extensions'),'base');assert.equal(target.searchParams.get('key'),config.serviceKey);
+});
+test('failed or malformed city lookups produce recoverable errors without exposing credentials',async()=>{
+ for(const districts of [[],[{center:'NaN,29'}],[{center:'181,29'}]]){const api=createAmapClient(config,async()=>response({status:'1',districts}));await assert.rejects(api.city('未知城市'),e=>e.status===422&&!e.message.includes(config.serviceKey));}
+ const denied=createAmapClient(config,async()=>response({status:'0',info:'INVALID_USER_KEY',infocode:'10001'}));await assert.rejects(denied.city('张家界'),/INVALID_USER_KEY/);
+});

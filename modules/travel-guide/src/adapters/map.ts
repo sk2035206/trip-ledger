@@ -17,7 +17,6 @@ type MapInstance = {
     setFitView(overlays?: Overlay[], immediately?: boolean, padding?: number[], maxZoom?: number): void;
     setZoomAndCenter(zoom: number, center: number[]): void;
     setCenter(center: number[]): void;
-    setCity(city: string): void;
     getZoom(): number;
     zoomIn(): void;
     zoomOut(): void;
@@ -83,7 +82,7 @@ export class AmapAdapter {
         this.map.setZoomAndCenter(Math.max(this.map.getZoom(), 14), [p.lng, p.lat]); }
     fit() { if (this.markers.length || this.lines.length)
         this.map.setFitView([...this.markers, ...this.lines], false, [60, 45, 80, 45], 15); }
-    city(city: string) { this.map.setCity(city); }
+    city(center: [number,number], zoom: number) { this.map.setZoomAndCenter(zoom, center); }
     zoom(delta: number) { if (delta > 0)
         this.map.zoomIn();
     else

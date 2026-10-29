@@ -8,6 +8,7 @@ export async function handleMaps(request:IncomingMessage,response:ServerResponse
   if(origin&&origin!==`http://${host}`&&origin!==`https://${host}`){sendJson(response,403,{error:'不允许跨站访问地图服务'});return;}
   const config=AmapConfig.load(),api=createAmapClient(config);
   if(path==='/api/maps/config'){sendJson(response,200,{webKey:config.webKey});return;}
+  if(path==='/api/maps/city'){sendJson(response,200,await api.city(url.searchParams.get('city')));return;}
   if(path==='/api/maps/places'){sendJson(response,200,await api.search(url.searchParams.get('q'),url.searchParams.get('city')));return;}
   if(path==='/api/maps/route'){sendJson(response,200,await api.route(url.searchParams.get('origin'),url.searchParams.get('destination'),url.searchParams.get('mode')));return;}
   if(path.startsWith('/api/maps/_AMapService/')){

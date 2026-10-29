@@ -11,10 +11,11 @@
 - 不提供编辑、排序、增删、搜索新地点、导入或导出入口；地图缩放、分类筛选、切换日期、定位已确认地点和生成既定路线仍可使用。
 - 仅返回指定计划及出行标题、日期，不返回账本成员、费用、全量工作台数据或已从计划和待选移除的地点。计划内主动填写的备注和参考价格仍属于分享内容。
 - 分享页路线接口仅允许计划中相邻站点已保存的步行、骑行、驾车路线，不开放任意地点搜索或任意路线查询。地铁、高铁和手动交通沿用原计划说明。
+- 无已确认点位时，通过后端行政区接口定位当天城市，不调用高德 SDK 的 `setCity` JSONP 流程；仅允许查询计划中列出的城市。失败显示可重试提示，切换日期会取消旧查询，成功结果在当前页面缓存。
 - 微信内点击分享入口先进入只读页，再使用右上角菜单；只读页注册自己的微信卡片标题与链接。系统分享被取消时不弹出错误。
 - 无效令牌、已删除出行或不存在的计划显示不可访问；不会回退到默认示例。
 
-接口：鉴权 `GET /api/trips/{tripId}/play-plan/share` 生成令牌；匿名 `GET /api/play-plan-shares/{token}` 读取单份计划；匿名地图子接口为该地址下的 `/maps/config` 和 `/maps/route`。分享接口只接受 GET。私有计划及工作台写接口继续要求原有登录。
+接口：鉴权 `GET /api/trips/{tripId}/play-plan/share` 生成令牌；匿名 `GET /api/play-plan-shares/{token}` 读取单份计划；匿名地图子接口为该地址下的 `/maps/config`、`/maps/city` 和 `/maps/route`。分享接口只接受 GET。私有计划及工作台写接口继续要求原有登录。
 
 令牌采用 AES-256-GCM 加密认证。本次不增加数据库表或字段。后端首次启动自动生成 `config/play-plan-share.json`（权限 0600），也可通过 `PLAY_PLAN_SHARE_SECRET` 配置 64 位十六进制随机值。此配置须保持 Git 忽略、发布归档排除，并在服务器升级和备份时保留；丢失或更换密钥、修改工作台密码都会使已有分享链接失效。目前没有单条链接撤销或有效期设置，持有链接者可继续查看，转发前应确认计划备注可分享。
 
@@ -55,6 +56,7 @@
 | GET /api/trips/{tripId}/play-plan | 返回 trip 元信息、plan 或 null、revision；没有计划时 revision 为 empty |
 | PUT /api/trips/{tripId}/play-plan | 请求体为 plan 和读取时的 revision；成功返回新 revision |
 | GET /api/maps/config | 仅返回 Web JS Key |
+| GET /api/maps/city | city 对应行政区中心与缩放级别；服务端查询 |
 | GET /api/maps/places | q、city 地点搜索 |
 | GET /api/maps/route | origin、destination、mode；mode 为 walking / cycling / driving |
 | GET /_AMapService/{path} | H5 一级安全代理，转发到受登录保护的地图 API |

@@ -9,6 +9,7 @@ export function createGuideApi(base = '/api', sdkBase = '/_AMapService') {
     return {
         sdkBase,
         getConfig: () => request<{ webKey: string }>(`${base}/config`),
+        getCity: (city: string, signal: AbortSignal) => request<{center:[number,number];zoom:number}>(`${base}/city?${new URLSearchParams({city})}`, signal),
         async searchPlaces(query: string, city: string, signal: AbortSignal) {
             return (await request<{ places: SearchPlace[] }>(`${base}/places?${new URLSearchParams({ q: query, city })}`, signal)).places;
         },

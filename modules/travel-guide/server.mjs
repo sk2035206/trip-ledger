@@ -28,6 +28,7 @@ const server=http.createServer(async(req,res)=>{
    if(req.headers.origin&&req.headers.origin!==`http://${host}`&&req.headers.origin!==`https://${host}`)return json(res,403,{error:'不允许跨站访问'});
    if(req.headers['sec-fetch-site']==='cross-site')return json(res,403,{error:'不允许跨站访问'});
    if(url.pathname==='/api/config')return json(res,200,{webKey:config.webKey});
+   if(url.pathname==='/api/city')return json(res,200,await amap.city(url.searchParams.get('city')));
    if(url.pathname==='/api/places')return json(res,200,await amap.search(url.searchParams.get('q'),url.searchParams.get('city')));
    if(url.pathname==='/api/route')return json(res,200,await amap.route(url.searchParams.get('origin'),url.searchParams.get('destination'),url.searchParams.get('mode')));
    if(url.pathname.startsWith('/_AMapService/')){

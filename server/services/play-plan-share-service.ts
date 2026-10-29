@@ -22,3 +22,6 @@ export function isSharedRouteAllowed(snapshot:SharedPlayPlan,origin:string|null,
   return a?.locationStatus==='confirmed'&&b?.locationStatus==='confirmed'&&coordinateText(a)===origin&&coordinateText(b)===destination&&to.incomingMode===mode;
  }));
 }
+export function isSharedCityAllowed(snapshot:SharedPlayPlan,city:string|null){
+ return !!city&&snapshot.plan.days.some(day=>day.defaultSearchCity===city);
+}

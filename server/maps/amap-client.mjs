@@ -37,6 +37,15 @@ export function createAmapClient(config, fetcher = fetch) {
         return data;
     }
     return {
+        async city(city) {
+            if (typeof city !== 'string' || !city.trim() || city.length > 80)
+                throw new ApiError('请输入有效城市名称', 400);
+            const data = await call('/v3/config/district', { keywords: city.trim(), subdistrict: '0', extensions: 'base' });
+            const districts = Array.isArray(data.districts) ? data.districts : [];
+            const district = districts.find(d => d.name === city.trim()) || districts[0];
+            if (!district || !isCoordinate(district.center)) throw new ApiError('未找到该城市的地图中心，请核对城市名称', 422);
+            return { center: district.center.split(',').map(Number), zoom: { country: 4, province: 7, city: 10, district: 12 }[district.level] || 10 };
+        },
         async search(query, city) {
             if (typeof query !== 'string' || !query.trim() || query.length > 100 || typeof city !== 'string' || !city.trim() || city.length > 80)
                 throw new ApiError('请输入地点名称与搜索城市', 400);

@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 const fromGuide=createRequire(new URL('../modules/travel-guide/package.json',import.meta.url));
 const {renderToStaticMarkup}=fromGuide('react-dom/server'),{createElement}=fromGuide('react');
 import {createPlanShareToken,verifyPlanShareToken,serializePlanViewCookie,readPlanViewCookie} from '../server/auth/play-plan-share.ts';
-import {createPlayPlanShareService,isSharedRouteAllowed} from '../server/services/play-plan-share-service.ts';
+import {createPlayPlanShareService,isSharedRouteAllowed,isSharedCityAllowed} from '../server/services/play-plan-share-service.ts';
 import {PlayPlanShareConfig} from '../server/config/play-plan-share-config.ts';
 import {createEmptyPlan} from '../frontend/travel-guide/create-plan.ts';
 import {createPlanShareUrl} from '../frontend/travel-guide/share.ts';
@@ -32,6 +32,11 @@ test('public routes require confirmed adjacent stops and the configured transpor
  assert.equal(isSharedRouteAllowed(shared,'112.9,28.1','112.91,28.11','cycling'),true);
  for(const [a,b,mode]of [['112.9,28.1','112.91,28.11','driving'],['112.91,28.11','112.9,28.1','cycling'],['113,29','112.91,28.11','cycling'],['112.9,28.1','112.91,28.11','rail']])assert.equal(isSharedRouteAllowed(shared,a,b,mode),false);
  shared.plan.places[0].locationStatus='unresolved';assert.equal(isSharedRouteAllowed(shared,'112.9,28.1','112.91,28.11','cycling'),false);
+});
+test('anonymous city centering only accepts cities from the shared itinerary',async()=>{
+ const shared=await createPlayPlanShareService({get:async()=>fixture()},secret).read(createPlanShareToken('trip-one',secret));
+ assert.equal(isSharedCityAllowed(shared,'长沙'),true);
+ for(const city of [null,'','北京','长沙&key=attacker'])assert.equal(isSharedCityAllowed(shared,city),false);
 });
 test('map-view cookie is scoped to SDK paths and never grants a workbench session',()=>{
  const token=createPlanShareToken('trip-one',secret),cookie=serializePlanViewCookie(token,true);assert.match(cookie,/Path=\/_AMapService\//);assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);assert.match(cookie,/SameSite=Lax/);const request={headers:{cookie:cookie.split(';')[0]}};assert.equal(readPlanViewCookie(request),token);assert.equal(getWorkbenchSessionExpiration(request,{cookieName:'workbench',password:'x',sessionSecret:secret,sessionDays:7}),null);
