@@ -1638,3 +1638,12 @@ button:disabled {
 .sync-error { position: sticky; top: 0; z-index: 100; padding: 16px; background: #fff1d6; border: 1px solid #b88445; border-radius: 12px; color: #553c1a; }
 .sync-error p { margin: 8px 0; }
 .sync-error button { margin-right: 8px; }
+
+/* 游玩计划入口与出行账本关联。 */
+.play-plan-entry { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:20px; border:1px solid #c6d8cb; border-radius:10px; background:linear-gradient(120deg,#e9f1e6,#f7f8ee);padding:22px 24px; }
+.play-plan-entry p { color:#839478;font-size:11px;letter-spacing:2px;margin:0 0 7px; }
+.play-plan-entry h2 { color:#174c43;font-size:23px;margin:0 0 8px; }
+.play-plan-entry span { color:#738370;font-size:12px;line-height:1.8; }
+.play-plan-entry button { flex-shrink:0;min-height:42px; }
+.trip-plan-button { min-height:32px;font-size:11px;padding:0 12px; }
+@media(max-width:640px){.play-plan-entry{padding:18px;align-items:flex-start;flex-direction:column;gap:14px}.play-plan-entry button{width:100%;}.trip-plan-button{min-height:36px;}}

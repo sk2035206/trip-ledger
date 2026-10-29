@@ -214,6 +214,9 @@ test("SDK errors redact PEM private key data", () => {
 test("server archive exclusions prevent config keys from entering release bundles", async (t) => {
   const root = await fixture(t);
   await writeFile(path.join(root, "config/another.pem"), "TEST PEM");
+  await writeFile(path.join(root, "config/play-plan-share.json"), JSON.stringify({secret:"TEST_SHARE_SECRET"}));
+  await writeFile(path.join(root, "config/amap.json"), JSON.stringify({serviceKey:"TEST_MAP_SECRET"}));
+  await writeFile(path.join(root, "config/workbench-auth.json"), JSON.stringify({password:"TEST_PASSWORD"}));
   const script = await readFile(
     new URL("../scripts/release-build.sh", import.meta.url),
     "utf8",
@@ -228,6 +231,9 @@ test("server archive exclusions prevent config keys from entering release bundle
   assert.ok(
     !entries.includes("private.key") &&
       !entries.includes("another.pem") &&
-      !entries.includes("mysql.json"),
+      !entries.includes("mysql.json") &&
+      !entries.includes("play-plan-share.json") &&
+      !entries.includes("amap.json") &&
+      !entries.includes("workbench-auth.json"),
   );
 });

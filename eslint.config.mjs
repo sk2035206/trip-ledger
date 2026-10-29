@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "miniprogram/node_modules/**",
     "miniprogram/dist/**",
+    "modules/travel-guide/dist/**",
   ]),
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

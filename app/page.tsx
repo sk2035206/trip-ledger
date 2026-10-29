@@ -684,6 +684,11 @@ function Workbench() {
     setActiveView("ledger");
   }
 
+  function openPlayPlan(tripId: string) {
+    const basePath=window.location.pathname.startsWith('/ledger')?'/ledger':'';
+    window.location.href=`${basePath}/play-plan?${new URLSearchParams({tripId})}`;
+  }
+
   function openFirstLedger() {
     const firstTrip = appState.trips[0];
     if (!firstTrip) {
@@ -1441,6 +1446,7 @@ function Workbench() {
               trips={appState.trips}
               onOpen={openLedger}
               onEdit={openTripEdit}
+              onOpenPlan={openPlayPlan}
               onRequestDelete={requestTripDelete}
             />
           </Panel>
@@ -1521,6 +1527,10 @@ function Workbench() {
 
           {ledgerTab === "overview" && (
             <section className="content-grid">
+              <section className="play-plan-entry" aria-label="本次出行游玩计划">
+                <div><p>行前安排</p><h2>游玩计划</h2><span>安排每日景点、美食与住宿，在地图上串起路线，与同伴共享计划。</span></div>
+                <button type="button" onClick={() => openPlayPlan(currentTrip.id)}>打开游玩计划 →</button>
+              </section>
 	              <Panel title={currentTrip.title} kicker="账单概况">
 	                <div className="stats-grid">
 	                  <Stat label="公共总费用" value={formatMoney(totals.sharedTotal)} onClick={() => setLedgerTab("shared")} />
@@ -2500,10 +2510,12 @@ function TripList({
   onOpen,
   onEdit,
   onRequestDelete,
+  onOpenPlan,
 }: {
   trips: Trip[];
   onOpen: (id: string) => void;
   onEdit: (trip: Trip) => void;
+  onOpenPlan: (tripId: string) => void;
   onRequestDelete: (trip: Trip) => void;
 }) {
   if (trips.length === 0) return <Empty text="暂无出行账单" />;
@@ -2532,6 +2544,7 @@ function TripList({
             </div>
             <div className="trip-card-side">
               <b>{formatMoney(totals.finalTotal)}</b>
+              <button type="button" className="ghost-button trip-plan-button" onClick={() => onOpenPlan(trip.id)}>游玩计划</button>
               {canDeleteTrip(trip) ? (
                 <button type="button" className="ghost-danger" onClick={() => onRequestDelete(trip)}>
                   删除

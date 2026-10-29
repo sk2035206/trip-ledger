@@ -33,6 +33,7 @@
   ],
   "exclude": [
     "node_modules",
+    "modules/travel-guide",
     "miniprogram",
     "tools/wechat-ci/node_modules"
   ]

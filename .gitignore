@@ -65,3 +65,14 @@ yarn-error.log*
 
 # Isolated WeChat CI tool dependencies
 /tools/wechat-ci/node_modules/
+
+# Standalone travel guide credentials
+/modules/travel-guide/config/local.json
+/modules/travel-guide/node_modules/
+/modules/travel-guide/dist/
+
+# H5 map credentials
+/config/amap.json
+
+# Private read-only plan link encryption key
+/config/play-plan-share.json

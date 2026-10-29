@@ -2,6 +2,7 @@
 
 旅行分账 H5 与微信小程序：记录每次旅行的公共费用、出行费用、个人费用和人员付款，自动生成成员分账清单。
 
+- H5 游玩计划：按出行管理景点、美食、住宿与地图路线，数据库共享保存，支持停留时间和待选收藏（见 `docs/play-plan.md`）
 - 前端：Vinext（Next.js 兼容层）+ React 19 + Tailwind CSS
 - 微信小程序：Taro + React + TypeScript（`miniprogram/`）
 - 后端：独立 Node HTTP 服务（`server/`）
@@ -129,6 +130,7 @@ npm run mini:build
 
 ## 相关文档
 
+- `docs/play-plan.md`：H5 游玩计划、地图配置、共享保存与后续小程序复用
 - `docs/requirements.md`：功能需求与计算规则
 - `docs/project-rules.md`：开发约定、数据库规则和发布约定
 - `docs/deploy.md`：H5 / 后端部署说明

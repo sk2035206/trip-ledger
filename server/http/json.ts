@@ -9,11 +9,15 @@ export function sendJson(response: ServerResponse, status: number, payload: unkn
   response.end(JSON.stringify(payload));
 }
 
-export async function readJson(request: IncomingMessage) {
+export async function readJson(request: IncomingMessage, maxBytes = Infinity) {
   const chunks: Buffer[] = [];
+  let size = 0;
 
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const bytes=Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    if(size > maxBytes) throw Object.assign(new Error("请求内容过大"),{status:413});
+    chunks.push(bytes);
   }
 
   const content = Buffer.concat(chunks).toString("utf8");

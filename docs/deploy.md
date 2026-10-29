@@ -118,8 +118,23 @@ server {
 ## 版本协议与回退
 
 - `/api/state` 保存协议包含 `revision`，H5 与 API 必须配套部署，不混跑新旧 API 进程；已打开的旧 H5 页面需要刷新。
-- 上传前检查发布包与验证过的源码一致，且不包含 `config/mysql.json` 等真实配置。
+- 上传前检查发布包与验证过的源码一致，且不包含 `config/mysql.json`、`config/amap.json`、`config/workbench-auth.json`、`config/play-plan-share.json`、`config/deploy.env` 等真实配置；服务器原有私密配置保留，高德配置单独设置为 0600。
+- 游玩计划只读分享首次启动会自动生成 `config/play-plan-share.json`（0600），或读取环境变量 `PLAY_PLAN_SHARE_SECRET`；后续升级必须保留原值，不能用本地配置覆盖。备份该文件时按密钥保管，更换它或修改工作台密码会使现有游玩计划分享链接失效。本功能不需要执行数据库迁移。
 - 替换代码前备份前后端产物，保留当前数据库配置；依赖锁文件未变化时复用已安装依赖。
 - 重启后先做只读检查：H5 页面、静态资源、健康检查、`GET /api/state` 的 `revision`、单账单和分享页。不要用真实账单执行测试保存。
 - 若启动失败，停止本次应用进程，恢复配套前后端代码归档后再启动；代码回退不等于数据库回退，不执行未授权的数据恢复。
 - 2026-10-20 的已部署归档与备份位置见 [发布记录](releases.md)。
+
+## 游玩计划地图代理
+
+H5 游玩计划使用工作台登录和独立计划版本协议，部署时配套更新 H5 与 API。nginx 在 HTTPS server 中需要根级代理：
+
+```nginx
+location /_AMapService/ {
+    proxy_pass http://127.0.0.1:5174/api/maps/_AMapService/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+2026-10-29 已在生产配置启用；具体发布包、摘要、只读验收与备份见发布记录。
