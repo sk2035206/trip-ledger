@@ -10,6 +10,7 @@ import LedgerView from "../../components/ledger-view";
 import { Action, Empty } from "../../components/ui";
 import { Icon } from "../../components/visual";
 import { fetchSharedTrip, shareInfo } from "../../lib/api";
+import { appShareInfo } from "../../lib/share";
 
 export default function SharePage() {
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -45,10 +46,9 @@ export default function SharePage() {
   useShareAppMessage(() =>
     trip
       ? shareInfo(trip)
-      : {
-          title: "旅行分账清单",
-          path: `/pages/share/index?tripId=${encodeURIComponent(tripId.current)}`,
-        },
+      : tripId.current
+        ? shareInfo({id:tripId.current,title:"旅行账单"})
+        : appShareInfo(),
   );
   return (
     <View className="page">

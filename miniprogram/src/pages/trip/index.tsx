@@ -33,6 +33,7 @@ import {
 import { Avatar, Icon, SearchBox } from "../../components/visual";
 import { shareInfo } from "../../lib/api";
 import { hasMiniSession } from "../../lib/api";
+import { appShareInfo } from "../../lib/share";
 
 type Modal =
   | { kind: "expense"; type: ExpenseKind; id?: string }
@@ -58,7 +59,7 @@ export default function TripPage() {
     void refreshLedger().finally(() => Taro.stopPullDownRefresh());
   });
   useShareAppMessage(() =>
-    trip ? shareInfo(trip) : { title: "旅行分账", path: "/pages/home/index" },
+    trip ? shareInfo(trip) : appShareInfo(),
   );
   async function remove(kind: ExpenseKind, ids: string[]) {
     if (!trip || disabled) return;

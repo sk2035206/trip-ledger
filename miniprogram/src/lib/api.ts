@@ -104,10 +104,4 @@ export async function fetchSharedTrip(id: string): Promise<Trip> {
   }
   return normalizeAppState({ trips: [response.data.trip] }).trips[0];
 }
-export function shareInfo(trip: Trip) {
-  return {
-    title: `${trip.title} · 分账清单`,
-    path: `/pages/share/index?tripId=${encodeURIComponent(trip.id)}`,
-    imageUrl: "/assets/share-card.png",
-  };
-}
+export { shareInfo } from "./share";

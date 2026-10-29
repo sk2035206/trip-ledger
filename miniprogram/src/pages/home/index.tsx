@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import Taro, { useDidShow, usePullDownRefresh } from "@tarojs/taro";
+import Taro, { useDidShow, usePullDownRefresh, useShareAppMessage } from "@tarojs/taro";
 import { View, Text, Button, Input } from "@tarojs/components";
 import type { AppState, Trip } from "@ledger/trip-types";
 import {
@@ -34,6 +34,7 @@ import {
   useLedger,
 } from "../../lib/store";
 import { hasMiniSession, loginMini } from "../../lib/api";
+import { appShareInfo } from "../../lib/share";
 
 import {
   AmountSummary,
@@ -53,6 +54,7 @@ type Form = {
   note: string;
 };
 export default function HomePage() {
+  useShareAppMessage(appShareInfo);
   const ledger = useLedger();
   const [tab, setTab] = useState("工作台");
   const initialForm = useRef("");
@@ -303,7 +305,14 @@ export default function HomePage() {
                   : "井井有条，才看得清每一笔。"}
           </Text>
         </View>
-        {tab !== "工作台" && (
+        {tab === "工作台" ? (
+          <View className="header-actions">
+            <Button className="share-control" openType="share">
+              <Icon name="share" />
+              <Text>分享小程序</Text>
+            </Button>
+          </View>
+        ) : (
           <View className="header-actions">
             <Button
               className="circle-add"
