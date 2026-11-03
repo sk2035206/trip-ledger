@@ -3,6 +3,8 @@ export default defineAppConfig({
     "pages/home/index",
     "pages/trip/index",
     "pages/share/index",
+    "pages/play-plan/index",
+    "pages/play-plan-share/index",
   ],
   lazyCodeLoading: "requiredComponents",
   window: {

@@ -133,6 +133,10 @@ export default function TripPage() {
               </Picker>
             </View>
           </View>
+          <View className="guide-entry" onClick={()=>void Taro.navigateTo({url:`/pages/play-plan/index?tripId=${encodeURIComponent(trip.id)}`})} hoverClass="tap-soft">
+            <View><Text className="item-title">游玩攻略</Text><Text className="muted">查看每日安排、地点地图与路线，转发给同伴</Text></View>
+            <Icon name="chevron" />
+          </View>
           <LedgerView
             key={trip.id}
             trip={trip}

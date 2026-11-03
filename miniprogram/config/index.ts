@@ -23,6 +23,7 @@ export default defineConfig({
     options: {},
     patterns: [
       { from: "../public/share-card.png", to: "dist/assets/share-card.png" },
+      ...["sight","food","hotel","transport"].map(type=>({from:`src/assets/guide-${type}.png`,to:`dist/assets/guide-${type}.png`})),
     ],
   },
   mini: {

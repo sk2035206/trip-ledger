@@ -20,13 +20,14 @@ type LoginResponse = {
   error?: string;
 };
 
-async function requestJson<T>(
+export async function requestJson<T>(
   path: string,
   method: "GET" | "POST" | "PUT" = "GET",
   data?: unknown,
+  authenticated = true,
 ) {
   try {
-    const session = getMiniSession();
+    const session = authenticated ? getMiniSession() : null;
     const response = await Taro.request<T>({
       url: `${apiBase}${path}`,
       method,
@@ -39,7 +40,7 @@ async function requestJson<T>(
         ...(session ? { "X-Workbench-Session": session.token } : {}),
       },
     });
-    if (response.statusCode === 401 && path !== "/api/auth/login") {
+    if (authenticated && response.statusCode === 401 && path !== "/api/auth/login") {
       clearMiniSession();
       Taro.eventCenter.trigger("workbench-auth-expired");
     }

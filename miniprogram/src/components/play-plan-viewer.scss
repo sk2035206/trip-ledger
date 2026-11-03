@@ -1,0 +1,318 @@
+.guide-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20rpx;
+  margin: 20rpx 0;
+  padding: 26rpx;
+  border: 1rpx solid #dce5d7;
+  border-radius: 22rpx;
+  background: #edf2e6;
+}
+.guide-entry > view:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+.guide-entry .muted {
+  font-size: 23rpx;
+  line-height: 1.7;
+}
+.mini-guide {
+  background: #f5f5ef;
+}
+.mini-guide .guide-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+.mini-guide .guide-title-row > view {
+  flex: 1;
+  min-width: 0;
+}
+.mini-guide .page-title {
+  font-size: 40rpx;
+  line-height: 1.5;
+}
+.mini-guide .share-control {
+  flex-shrink: 0;
+  margin-top: 12rpx;
+}
+.mini-guide .guide-caption {
+  display: block;
+  font-size: 24rpx;
+  color: #83917b;
+  line-height: 1.8;
+  margin-top: 10rpx;
+}
+.mini-guide .guide-days {
+  white-space: nowrap;
+  margin: 28rpx 0 20rpx;
+}
+.mini-guide .guide-day {
+  display: inline-flex;
+  vertical-align: top;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8rpx;
+  margin: 0 12rpx 4rpx 0;
+  padding: 20rpx 24rpx;
+  min-width: 210rpx;
+  border: 1rpx solid #dce4d5;
+  border-radius: 16rpx;
+  background: #edf1e6;
+  line-height: 1.5;
+  font-size: 26rpx;
+  color: #7c8b70;
+}
+.mini-guide .guide-day > text:first-child {
+  font-size: 21rpx;
+  letter-spacing: 2rpx;
+}
+.mini-guide .guide-day.active {
+  background: #fffefa;
+  border-color: #8fa981;
+  color: #28594b;
+}
+.mini-guide button::after {
+  border: 0;
+}
+.mini-guide .guide-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 12rpx;
+  margin-bottom: 22rpx;
+}
+.mini-guide .guide-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6rpx;
+  background: #e8eedf;
+  border-radius: 16rpx;
+  padding: 6rpx;
+}
+.mini-guide .guide-tabs .guide-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 18rpx 4rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #617158;
+  border: 0;
+  background: transparent;
+  border-radius: 12rpx;
+}
+.mini-guide .guide-tabs .guide-tab.is-active {
+  background: #28594b;
+  color: #fffefa;
+  font-weight: 600;
+  box-shadow: 0 3rpx 8rpx #28594b24;
+}
+.mini-guide .guide-tab-check {
+  width: 20rpx;
+  flex-shrink: 0;
+  font-size: 22rpx;
+}
+.mini-guide .guide-tab-count {
+  min-width: 26rpx;
+  padding: 0 7rpx;
+  border-radius: 8rpx;
+  background: #dce5d3;
+  color: #52684a;
+  font-size: 20rpx;
+}
+.mini-guide .guide-tab.is-active .guide-tab-count {
+  background: #ffffff26;
+  color: #fffefa;
+}
+.mini-guide .guide-tab-pressed {
+  opacity: 0.8;
+}
+.mini-guide .guide-map-toggle {
+  flex-shrink: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  padding: 14rpx 16rpx;
+  border: 1rpx solid #c8d5bf;
+  border-radius: 16rpx;
+  background: #fffefa;
+  color: #45643a;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+.mini-guide .guide-map-toggle.is-open {
+  background: #e6eddf;
+  border-color: #7e9c70;
+}
+.mini-guide .guide-content,
+.mini-guide .guide-map-panel,
+.mini-guide .guide-route-summary {
+  padding: 26rpx;
+  background: #fffefa;
+  border: 1rpx solid #e0e6d8;
+  border-radius: 22rpx;
+  margin-bottom: 22rpx;
+}
+.mini-guide .guide-section-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #284737;
+  margin-bottom: 12rpx;
+}
+.mini-guide .guide-stop {
+  border: 1rpx solid #e0e6d8;
+  border-radius: 18rpx;
+  padding: 24rpx;
+  margin-top: 22rpx;
+}
+.mini-guide .guide-stop-heading {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 16rpx;
+}
+.mini-guide .guide-number {
+  background: #e9f0df;
+  color: #71895f;
+  padding: 8rpx 12rpx;
+  border-radius: 50%;
+  font-size: 23rpx;
+}
+.mini-guide .guide-kind {
+  display: inline-block;
+  width: max-content;
+  padding: 5rpx 12rpx;
+  border-radius: 8rpx;
+  background: #ecf1e6;
+  color: #608054;
+  font-size: 22rpx;
+}
+.mini-guide .guide-kind.food {
+  color: #9d6e3e;
+  background: #f4eddf;
+}
+.mini-guide .guide-kind.hotel {
+  color: #527693;
+  background: #eaf0f5;
+}
+.mini-guide .guide-kind.transport {
+  color: #797092;
+  background: #efecf5;
+}
+.mini-guide .guide-stop-title {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 30rpx;
+  line-height: 1.6;
+  font-weight: 600;
+}
+.mini-guide .guide-note {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 25rpx;
+  line-height: 1.9;
+  color: #71816a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mini-guide .guide-transport {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 22rpx;
+  padding: 0 14rpx;
+  color: #8d967e;
+  font-size: 23rpx;
+  line-height: 1.8;
+}
+.mini-guide .guide-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  width: auto;
+  max-width: 100%;
+  margin: 20rpx 0 0;
+  padding: 14rpx 22rpx;
+  background: #edf3e8;
+  color: #28594b;
+  font-size: 24rpx;
+  font-weight: 500;
+  line-height: 1.5;
+  border: 1rpx solid #cddcc5;
+  border-radius: 12rpx;
+  min-height: 76rpx;
+  white-space: nowrap;
+}
+.mini-guide .guide-link::after {
+  border: 0;
+}
+.mini-guide .guide-link-icon {
+  font-size: 28rpx;
+  line-height: 1;
+}
+.mini-guide .guide-link:active {
+  background: #dfead7;
+}
+.mini-guide .guide-primary {
+  margin: 22rpx 0 0;
+  background: #28594b;
+  color: #fffefa;
+  border-radius: 14rpx;
+  line-height: 1.6;
+  padding: 20rpx;
+  font-size: 26rpx;
+}
+.mini-guide .guide-primary[disabled] {
+  opacity: 0.45;
+}
+.mini-guide .guide-route-summary > text {
+  display: block;
+  line-height: 1.9;
+  font-size: 24rpx;
+  color: #7b8972;
+}
+.mini-guide .guide-route-summary > .guide-section-title {
+  font-size: 30rpx;
+  color: #284737;
+}
+.mini-guide .guide-native-map {
+  width: 100%;
+  height: 600rpx;
+  border-radius: 14rpx;
+  overflow: hidden;
+}
+.mini-guide .guide-map-empty {
+  min-height: 300rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+  font-size: 24rpx;
+  color: #7b8972;
+}
+.mini-guide .guide-map-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  font-size: 26rpx;
+  padding-top: 20rpx;
+}
+.mini-guide .guide-footer {
+  display: block;
+  color: #8d987f;
+  font-size: 22rpx;
+  line-height: 1.9;
+  padding: 4rpx 8rpx 36rpx;
+}
